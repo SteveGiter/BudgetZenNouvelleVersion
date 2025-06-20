@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../../colors/app_colors.dart';
 import '../../services/firebase/auth.dart';
 import '../../services/firebase/firestore.dart';
-import '../../utils/logout_utils.dart';
 import '../../widgets/ForAdmin/admin_bottom_nav_bar.dart';
 import '../../widgets/custom_app_bar.dart';
 
@@ -43,20 +42,10 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
 
   // Country codes with flags
   static const Map<String, String> _countryCodes = {
-    '+237': 'Cameroun 🇨🇴',
-    '+242': 'Congo 🇨🇬',
-    '+241': 'Gabon 🇬🇦',
-    '+235': 'Tchad 🇹🇩',
-    '+33': 'France 🇫🇷',
-    '+1': 'USA 🇺🇸',
-    '+44': 'UK 🇬🇧',
-    '+49': 'Germany 🇩🇪',
-    '+32': 'Belgium 🇧🇪',
-    '+41': 'Switzerland 🇨🇭',
-    '+212': 'Morocco 🇲🇦',
-    '+221': 'Senegal 🇸🇳',
-    '+225': 'Ivory Coast 🇨🇮',
-    '+229': 'Benin 🇧🇯',
+    '+237': '🇨🇲 Cameroun',
+    '+242': '🇨🇬 Congo',
+    '+241': '🇬🇦 Gabon',
+    '+235': '🇹🇩 Tchad',
   };
 
   @override
@@ -69,10 +58,8 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
   void _initializeUserData() {
     _currentUser = _authService.currentUser;
     if (_currentUser != null) {
-      debugPrint('Utilisateur connecté : ${_currentUser!.uid}');
       _checkAdminStatus();
     } else {
-      debugPrint('Aucun utilisateur connecté.');
       setState(() => _isLoading = false);
       _showErrorSnackBar('Aucun utilisateur connecté.');
     }
@@ -112,7 +99,6 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
   /// Sets up streams to listen for user data updates.
   void _setupUserStreams() {
     final uid = _currentUser!.uid;
-    debugPrint('Configuration des streams pour l\'UID : $uid');
     _userSubscription = _firestoreService.firestore
         .collection('budgets')
         .doc(uid)
@@ -207,7 +193,6 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Expanded(child: Text(message)),
             IconButton(
@@ -227,7 +212,6 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Expanded(child: Text(message)),
             IconButton(
@@ -359,6 +343,36 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
     }
   }
 
+  /// Shows a dialog to confirm logout.
+  Future<void> _showLogoutDialog() async {
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Déconnexion'),
+        content: const Text('Voulez-vous vraiment vous déconnecter ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              try {
+                await _authService.logout();
+                Navigator.pop(context);
+                Navigator.pushReplacementNamed(context, '/loginPage');
+              } catch (e) {
+                _handleError('Erreur lors de la déconnexion: $e');
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Déconnexion', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Shows a dialog to enter the current password.
   Future<String?> _showPasswordDialog(String message) async {
     final controller = TextEditingController();
@@ -409,7 +423,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
     return Scaffold(
       appBar: CustomAppBar(
         title: 'Profil Administrateur',
-        showBackArrow: false,
+        showBackArrow: true,
         showDarkModeButton: true,
       ),
       backgroundColor: isDarkMode ? Colors.grey[900] : Colors.grey[100],
@@ -420,7 +434,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
         child: Text(
           'Accès réservé aux administrateurs',
           style: TextStyle(
-            color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+            color: isDarkMode ? Colors.grey[400]! : Colors.grey[600]!,
             fontSize: 16,
           ),
         ),
@@ -438,7 +452,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () => confirmLogout(context),
+                onPressed: _showLogoutDialog,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
                   foregroundColor: Colors.white,
@@ -446,7 +460,6 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  elevation: 0,
                 ),
                 child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -458,7 +471,6 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
           ],
         ),
       ),
@@ -530,7 +542,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
     return Column(
       children: [
         Text(
-          _nameController.text.isNotEmpty ? _nameController.text : 'Non défini',
+          _nameController.text.isNotEmpty ? _nameController.text : 'Non renseigné',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -551,6 +563,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
 
   /// Builds the card containing personal information.
   Widget _buildPersonalInfoCard() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -564,7 +577,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Colors.black87,
+                color: isDarkMode ? Colors.white : Colors.black87,
               ),
             ),
             const Divider(height: 20),
@@ -591,6 +604,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
 
   /// Builds the phone number field.
   Widget _buildPhoneField() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -598,7 +612,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
           'Numéro de téléphone',
           style: TextStyle(
             fontSize: 12,
-            color: Colors.grey,
+            color: isDarkMode ? Colors.grey[400]! : Colors.grey,
           ),
         ),
         const SizedBox(height: 5),
@@ -609,19 +623,32 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
 
   /// Builds the non-editable phone field.
   Widget _buildNonEditablePhoneField() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 15),
       decoration: BoxDecoration(
-        border: Border.all(color: AppColors.borderColor),
+        border: Border.all(
+          color: isDarkMode ? Colors.grey[700]! : AppColors.borderColor,
+        ),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         children: [
-          Icon(Icons.phone_outlined, color: AppColors.secondaryTextColor),
+          Icon(
+            Icons.phone_outlined,
+            color: isDarkMode ? Colors.grey[300]! : AppColors.secondaryTextColor,
+          ),
           const SizedBox(width: 10),
           Text(_selectedCountryCode),
           const SizedBox(width: 5),
-          Expanded(child: Text(_phoneController.text.isEmpty ? 'Non défini' : _phoneController.text)),
+          Expanded(
+            child: Text(
+              _phoneController.text.isEmpty ? 'Non défini' : _phoneController.text,
+              style: TextStyle(
+                color: isDarkMode ? Colors.white : AppColors.textColor,
+              ),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.edit, size: 20),
             onPressed: () => setState(() => _isEditingPhone = true),
@@ -633,11 +660,15 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
 
   /// Builds the editable phone field.
   Widget _buildEditablePhoneField() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         Row(
           children: [
-            Icon(Icons.phone_outlined, color: AppColors.secondaryTextColor),
+            Icon(
+              Icons.phone_outlined,
+              color: isDarkMode ? Colors.grey[300]! : AppColors.secondaryTextColor,
+            ),
             const SizedBox(width: 10),
             DropdownButton<String>(
               value: _selectedCountryCode,
@@ -692,7 +723,8 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
 
   /// Builds the password field.
   Widget _buildPasswordField() {
-    final isGoogleUser = _currentUser?.providerData?.any((userInfo) => userInfo.providerId == 'google.com') ?? false;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final isGoogleUser = _currentUser?.providerData.any((userInfo) => userInfo.providerId == 'google.com') ?? false;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -701,7 +733,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
           'Mot de passe',
           style: TextStyle(
             fontSize: 12,
-            color: Colors.grey,
+            color: isDarkMode ? Colors.grey[400]! : Colors.grey,
           ),
         ),
         const SizedBox(height: 5),
@@ -712,21 +744,27 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
 
   /// Builds the non-editable password field.
   Widget _buildNonEditablePasswordField(bool isGoogleUser) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 15),
       decoration: BoxDecoration(
-        border: Border.all(color: AppColors.borderColor),
+        border: Border.all(
+          color: isDarkMode ? Colors.grey[700]! : AppColors.borderColor,
+        ),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         children: [
-          Icon(Icons.lock_outline, color: AppColors.secondaryTextColor),
+          Icon(
+            Icons.lock_outline,
+            color: isDarkMode ? Colors.grey[300]! : AppColors.secondaryTextColor,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               _passwordController.text,
               style: TextStyle(
-                color: _passwordController.text == '********' ? Colors.grey : Colors.black,
+                color: _passwordController.text == '********' ? Colors.grey : (isDarkMode ? Colors.white : Colors.black),
               ),
             ),
           ),
@@ -749,7 +787,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
             icon: Icon(
               _isObscuringPassword ? Icons.visibility : Icons.visibility_off,
               size: 20,
-              color: Colors.grey[600],
+              color: isDarkMode ? Colors.grey[400]! : Colors.grey[600]!,
             ),
             onPressed: () {
               if (_passwordController.text != '********') {
@@ -764,11 +802,15 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
 
   /// Builds the editable password field.
   Widget _buildEditablePasswordField() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         Row(
           children: [
-            Icon(Icons.lock_outline, color: AppColors.secondaryTextColor),
+            Icon(
+              Icons.lock_outline,
+              color: isDarkMode ? Colors.grey[300]! : AppColors.secondaryTextColor,
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: TextField(
@@ -783,7 +825,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                   suffixIcon: IconButton(
                     icon: Icon(
                       _isObscuringPassword ? Icons.visibility : Icons.visibility_off,
-                      color: Colors.grey[600],
+                      color: isDarkMode ? Colors.grey[400]! : Colors.grey[600]!,
                     ),
                     onPressed: () => setState(() => _isObscuringPassword = !_isObscuringPassword),
                   ),
@@ -820,6 +862,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
 
   /// Builds the current budget field.
   Widget _buildBudgetField() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -827,29 +870,31 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
           'Budget actuel',
           style: TextStyle(
             fontSize: 12,
-            color: Colors.grey,
+            color: isDarkMode ? Colors.grey[400]! : Colors.grey,
           ),
         ),
         const SizedBox(height: 5),
         Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 15),
           decoration: BoxDecoration(
-            border: Border.all(color: AppColors.borderColor),
+            border: Border.all(
+              color: isDarkMode ? Colors.grey[700]! : AppColors.borderColor,
+            ),
             borderRadius: BorderRadius.circular(8),
-            color: Colors.white,
+            color: isDarkMode ? Colors.grey[900] : Colors.white,
           ),
           child: Row(
             children: [
               Icon(
                 Icons.account_balance_wallet_outlined,
-                color: AppColors.secondaryTextColor,
+                color: isDarkMode ? Colors.grey[300]! : AppColors.secondaryTextColor,
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   '${_currentBudget.toStringAsFixed(2)} FCFA',
                   style: TextStyle(
-                    color: AppColors.textColor,
+                    color: isDarkMode ? Colors.white : AppColors.textColor,
                   ),
                 ),
               ),
@@ -871,6 +916,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
     TextInputType? keyboardType,
     required IconData icon,
   }) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -878,23 +924,33 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
           label,
           style: TextStyle(
             fontSize: 12,
-            color: Colors.grey,
+            color: isDarkMode ? Colors.grey[400]! : Colors.grey,
           ),
         ),
         const SizedBox(height: 5),
         if (!isEditing)
           Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 15),
             decoration: BoxDecoration(
-              border: Border.all(color: AppColors.borderColor),
+              border: Border.all(
+                color: isDarkMode ? Colors.grey[700]! : AppColors.borderColor,
+              ),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
               children: [
-                Icon(icon, color: AppColors.secondaryTextColor),
+                Icon(
+                  icon,
+                  color: isDarkMode ? Colors.grey[300]! : AppColors.secondaryTextColor,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(controller.text.isEmpty ? 'Non défini' : controller.text),
+                  child: Text(
+                    controller.text.isEmpty ? 'Non défini' : controller.text,
+                    style: TextStyle(
+                      color: isDarkMode ? Colors.white : AppColors.textColor,
+                    ),
+                  ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.edit, size: 20),
@@ -908,7 +964,10 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
             children: [
               Row(
                 children: [
-                  Icon(icon, color: AppColors.secondaryTextColor),
+                  Icon(
+                    icon,
+                    color: isDarkMode ? Colors.grey[300]! : AppColors.secondaryTextColor,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: TextField(

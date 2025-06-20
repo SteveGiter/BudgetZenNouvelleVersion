@@ -11,7 +11,6 @@ import '../widgets/RechargePage.dart';
 import '../widgets/RetraitPage.dart';
 import '../widgets/RevenusChart.dart';
 import '../widgets/CircularChart.dart';
-import '../widgets/Transaction_demo.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/custom_bottom_nav_bar.dart';
 import '../widgets/DepensesChart.dart';

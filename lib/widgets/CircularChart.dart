@@ -122,30 +122,47 @@ class _CircularChartState extends State<CircularChart> {
   }
 
   Widget _buildChartAndSummary(double totalDepenses, double totalRevenus, double totalEpargnes, double montantDisponible, bool isDarkMode) {
+    final total = totalDepenses + totalRevenus + totalEpargnes;
+    final isRevenueOnly = totalDepenses == 0 && totalEpargnes == 0 && totalRevenus > 0;
+
     return Column(
       children: [
         SizedBox(
           height: 200,
-          child: PieChart(
-            PieChartData(
-              pieTouchData: PieTouchData(
-                touchCallback: (FlTouchEvent event, pieTouchResponse) {
-                  setState(() {
-                    if (!event.isInterestedForInteractions ||
-                        pieTouchResponse == null ||
-                        pieTouchResponse.touchedSection == null) {
-                      touchedIndex = -1;
-                      return;
-                    }
-                    touchedIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
-                  });
-                },
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              PieChart(
+                PieChartData(
+                  pieTouchData: PieTouchData(
+                    touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                      setState(() {
+                        if (!event.isInterestedForInteractions ||
+                            pieTouchResponse == null ||
+                            pieTouchResponse.touchedSection == null) {
+                          touchedIndex = -1;
+                          return;
+                        }
+                        touchedIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
+                      });
+                    },
+                  ),
+                  borderData: FlBorderData(show: false),
+                  sectionsSpace: 0,
+                  centerSpaceRadius: 60,
+                  sections: showingSections(totalDepenses, totalRevenus, totalEpargnes, isDarkMode),
+                ),
               ),
-              borderData: FlBorderData(show: false),
-              sectionsSpace: 0,
-              centerSpaceRadius: 60,
-              sections: showingSections(totalDepenses, totalRevenus, totalEpargnes, isDarkMode),
-            ),
+              if (isRevenueOnly)
+                Text(
+                  '100%',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: isDarkMode ? AppColors.darkTextColor : Colors.black,
+                  ),
+                ),
+            ],
           ),
         ),
         const SizedBox(height: 20),
@@ -160,19 +177,30 @@ class _CircularChartState extends State<CircularChart> {
     final total = depenses + revenus + epargnes;
     final sections = <PieChartSectionData>[];
 
+    // Compter le nombre de sections non nulles
+    final nonZeroSections = [
+      depenses > 0,
+      revenus > 0,
+      epargnes > 0,
+    ].where((x) => x).length;
+
+    // Si une seule section est non nulle, on n'affiche pas le titre
+    final showTitles = nonZeroSections > 1;
+
     // Section Dépenses
     if (depenses > 0) {
       sections.add(
         PieChartSectionData(
           color: Colors.red.shade400,
           value: depenses,
-          title: total > 0 ? '${(depenses / total * 100).toStringAsFixed(1)}%' : '',
+          title: showTitles && total > 0 ? '${(depenses / total * 100).toStringAsFixed(1)}%' : '',
           radius: touchedIndex == sections.length ? 30 : 25,
           titleStyle: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.bold,
             color: isDarkMode ? AppColors.darkTextColor : Colors.black,
           ),
+          showTitle: showTitles,
         ),
       );
     }
@@ -183,13 +211,14 @@ class _CircularChartState extends State<CircularChart> {
         PieChartSectionData(
           color: Colors.green.shade400,
           value: revenus,
-          title: total > 0 ? '${(revenus / total * 100).toStringAsFixed(1)}%' : '',
+          title: showTitles && total > 0 ? '${(revenus / total * 100).toStringAsFixed(1)}%' : '',
           radius: touchedIndex == sections.length ? 30 : 25,
           titleStyle: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.bold,
             color: isDarkMode ? AppColors.darkTextColor : Colors.black,
           ),
+          showTitle: showTitles,
         ),
       );
     }
@@ -200,13 +229,14 @@ class _CircularChartState extends State<CircularChart> {
         PieChartSectionData(
           color: Colors.blue.shade400,
           value: epargnes,
-          title: total > 0 ? '${(epargnes / total * 100).toStringAsFixed(1)}%' : '',
+          title: showTitles && total > 0 ? '${(epargnes / total * 100).toStringAsFixed(1)}%' : '',
           radius: touchedIndex == sections.length ? 30 : 25,
           titleStyle: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.bold,
             color: isDarkMode ? AppColors.darkTextColor : Colors.black,
           ),
+          showTitle: showTitles,
         ),
       );
     }

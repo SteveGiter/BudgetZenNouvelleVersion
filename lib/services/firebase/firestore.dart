@@ -213,8 +213,6 @@ class FirestoreService {
         .where('users', arrayContains: userId)
         .where('expediteurDeleted', isEqualTo: null)
         .where('destinataireDeleted', isEqualTo: null)
-        .orderBy('expediteurDeleted')
-        .orderBy('destinataireDeleted')
         .orderBy('dateHeure', descending: true)
         .get();
   }
@@ -265,12 +263,12 @@ class FirestoreService {
     final epargnesStream = streamTotalEpargnes(utilisateurId).distinct();
     final montantDisponibleStream = streamMontantDisponible(utilisateurId).distinct();
 
-    final combinedStream = Rx.combineLatest4<double, double, double, double, Map<String, double>>(
+    final combinedStream = Rx.combineLatest4(
       depensesStream,
       revenusStream,
       epargnesStream,
       montantDisponibleStream,
-          (depenses, revenus, epargnes, montantDisponible) => {
+          (double depenses, double revenus, double epargnes, double montantDisponible) => {
         'depenses': depenses,
         'revenus': revenus,
         'epargnes': epargnes,
@@ -284,15 +282,12 @@ class FirestoreService {
     ).listen((data) async {
       final now = DateTime.now();
       final mois = '${now.year}-${now.month.toString().padLeft(2, '0')}';
-      final docId = utilisateurId;
-
-      final statistiquesRef = _firestore.collection('statistiques').doc(docId);
 
       try {
-        final newDepenses = data['depenses'] ?? 0;
-        final newRevenus = data['revenus'] ?? 0;
-        final newEpargnes = data['epargnes'] ?? 0;
-        final newSolde = data['soldeActuel'] ?? 0;
+        final newDepenses = data['depenses'] as double? ?? 0.0;
+        final newRevenus = data['revenus'] as double? ?? 0.0;
+        final newEpargnes = data['epargnes'] as double? ?? 0.0;
+        final newSolde = data['soldeActuel'] as double? ?? 0.0;
 
         await statistiquesRef.set({
           'utilisateurId': utilisateurId,
@@ -304,7 +299,7 @@ class FirestoreService {
           'derniereMiseAJour': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       } catch (e) {
-        print('Erreur lors de la mise à jour des statistiques: $e');
+        debugPrint('Erreur lors de la mise à jour des statistiques : $e');
         cancelStatisticsSubscription(utilisateurId);
         await createOrUpdateStatistiques(utilisateurId);
       }
@@ -528,9 +523,9 @@ class FirestoreService {
         .collection('depenses')
         .where('userId', isEqualTo: userId)
         .snapshots()
-        .map((snapshot) => snapshot.docs.fold(0.0, (sum, doc) {
+        .map((snapshot) => snapshot.docs.fold<double>(0.0, (double sum, doc) {
       final data = doc.data();
-      return sum + (data['montant'] as num).toDouble();
+      return sum + (data['montant'] as num?)!.toDouble() ?? 0.0;
     }));
   }
 
@@ -539,7 +534,7 @@ class FirestoreService {
     final snapshot = await query.get();
     return snapshot.docs.fold<double>(0.0, (double sum, doc) {
       final data = doc.data();
-      return sum + (data['montant'] as num).toDouble();
+      return sum + (data['montant'] as num?)!.toDouble() ?? 0.0;
     });
   }
 
@@ -548,9 +543,9 @@ class FirestoreService {
         .collection('revenus')
         .where('userId', isEqualTo: userId)
         .snapshots()
-        .map((snapshot) => snapshot.docs.fold(0.0, (sum, doc) {
+        .map((snapshot) => snapshot.docs.fold<double>(0.0, (double sum, doc) {
       final data = doc.data();
-      return sum + (data['montant'] as num).toDouble();
+      return sum + (data['montant'] as num?)!.toDouble() ?? 0.0;
     }));
   }
 
@@ -568,7 +563,7 @@ class FirestoreService {
         .collection('epargnes')
         .where('userId', isEqualTo: userId)
         .snapshots()
-        .map((snapshot) => snapshot.docs.fold(0.0, (sum, doc) {
+        .map((snapshot) => snapshot.docs.fold<double>(0.0, (double sum, doc) {
       final data = doc.data();
       return sum + (data['montant'] as num).toDouble();
     }));
@@ -579,7 +574,7 @@ class FirestoreService {
         .collection('epargnes')
         .where('objectifId', isEqualTo: objectifId)
         .snapshots()
-        .map((snapshot) => snapshot.docs.fold(0.0, (sum, doc) {
+        .map((snapshot) => snapshot.docs.fold<double>(0.0, (double sum, doc) {
       final data = doc.data();
       return sum + (data['montant'] as num).toDouble();
     }));
@@ -597,7 +592,7 @@ class FirestoreService {
         .where('dateCreation', isGreaterThanOrEqualTo: start)
         .where('dateCreation', isLessThanOrEqualTo: end)
         .snapshots()
-        .map((snapshot) => snapshot.docs.fold(0.0, (sum, doc) {
+        .map((snapshot) => snapshot.docs.fold<double>(0.0, (double sum, doc) {
       final data = doc.data();
       return sum + (data['montant'] as num).toDouble();
     }));
@@ -614,7 +609,7 @@ class FirestoreService {
         .where('dateCreation', isGreaterThanOrEqualTo: start)
         .where('dateCreation', isLessThanOrEqualTo: end)
         .snapshots()
-        .map((snapshot) => snapshot.docs.fold(0.0, (sum, doc) {
+        .map((snapshot) => snapshot.docs.fold<double>(0.0, (double sum, doc) {
       final data = doc.data();
       return sum + (data['montant'] as num).toDouble();
     }));
@@ -631,7 +626,7 @@ class FirestoreService {
         .where('dateCreation', isGreaterThanOrEqualTo: start)
         .where('dateCreation', isLessThanOrEqualTo: end)
         .snapshots()
-        .map((snapshot) => snapshot.docs.fold(0.0, (sum, doc) {
+        .map((snapshot) => snapshot.docs.fold<double>(0.0, (double sum, doc) {
       final data = doc.data();
       return sum + (data['montant'] as num).toDouble();
     }));
@@ -651,6 +646,13 @@ class FirestoreService {
     });
 
     return existingUsers.isEmpty;
+  }
+
+  Future<bool> isPhoneNumberUniqueForAllUsers(String phoneNumber, String uid) async {
+    final query = _firestore.collection('utilisateurs').where('numeroTelephone', isEqualTo: phoneNumber);
+    final snapshot = await query.get();
+
+    return snapshot.docs.every((doc) => doc.id == uid);
   }
 
   void dispose() {

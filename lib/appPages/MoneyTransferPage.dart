@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../colors/app_colors.dart';
-import '../services/firebase/firestore.dart';
 import '../widgets/custom_app_bar.dart';
-import '../widgets/custom_bottom_nav_bar.dart';
 
 class MoneyTransferPage extends StatefulWidget {
   const MoneyTransferPage({super.key});
@@ -21,11 +19,11 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
   String? _selectedCategory;
   String _selectedOperator = 'orange';
   bool _showCodeField = false;
+  bool _isProcessing = false;
 
   static const Color _orangePrimary = Color(0xFFFF7900);
   static const Color _orangeLight = Color(0xFFFF9E40);
   static const Color _mtnPrimary = Color(0xFFFFCC00);
-  static const Color _mtnDark = Color(0xFFF5B800);
   static const Color _mtnLight = Color(0xFFFFE040);
 
   final Map<String, String> _countryCodes = {
@@ -33,10 +31,6 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
     '+242': '🇨🇬 Congo',
     '+241': '🇬🇦 Gabon',
     '+235': '🇹🇩 Tchad',
-    '+33': '🇫🇷 France',
-    '+1': '🇺🇸 USA',
-    '+44': '🇬🇧 UK',
-    '+49': '🇩🇪 Allemagne',
   };
 
   final List<Map<String, String>> _transactionCategories = [
@@ -55,7 +49,6 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
 
   Color get _primaryColor => _selectedOperator == 'orange' ? _orangePrimary : _mtnPrimary;
   Color get _primaryLight => _selectedOperator == 'orange' ? _orangeLight : _mtnLight;
-  Color get _primaryDark => _selectedOperator == 'orange' ? _orangePrimary : _mtnDark;
   Color get _textColor => _selectedOperator == 'orange' ? Colors.white : Colors.black;
 
   @override
@@ -418,7 +411,7 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: _handleTransfer,
+        onPressed: _isProcessing ? null : _handleTransfer,
         style: ElevatedButton.styleFrom(
           backgroundColor: _primaryColor,
           foregroundColor: _textColor,
@@ -428,7 +421,16 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
           ),
           elevation: 3,
         ),
-        child: Text(
+        child: _isProcessing
+            ? const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          ),
+        )
+            : Text(
           _showCodeField ? 'CONFIRMER' : 'SUIVANT',
           style: const TextStyle(
             fontSize: 16,
@@ -440,173 +442,221 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
     );
   }
 
-  void _handleTransfer() async {
+  Future<void> _handleTransfer() async {
     if (!_showCodeField) {
       _validateAndShowCodeField();
       return;
     }
 
-    final phoneNumber = '$_selectedCountryCode ${_recipientController.text.trim()}';
-    final amountText = _amountController.text.trim();
-    final amount = double.tryParse(amountText.replaceAll(RegExp(r'[^0-9.]'), ''));
-    final category = _selectedCategory;
-    final code = _codeController.text.trim();
-
-    if (code.isEmpty) {
-      _showError('Veuillez entrer le code de confirmation');
-      return;
-    }
-
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) {
-      _showError('Session expirée, veuillez vous reconnecter');
-      return;
-    }
+    setState(() => _isProcessing = true);
 
     try {
+      final recipientPhone = '$_selectedCountryCode ${_recipientController.text.trim()}';
+      final amountText = _amountController.text.trim();
+      final amount = double.tryParse(amountText.replaceAll(RegExp(r'[^0-9.]'), ''));
+      final category = _selectedCategory;
+      final code = _codeController.text.trim();
+
+      // Validation des champs
+      if (recipientPhone.isEmpty) {
+        throw 'Veuillez entrer un numéro de téléphone';
+      }
+
+      if (!RegExp(r'^\+[0-9]{1,3} [0-9]{8,15}$').hasMatch(recipientPhone)) {
+        throw 'Format de numéro invalide';
+      }
+
+      if (amount == null || amount <= 0) {
+        throw 'Montant invalide (doit être > 0)';
+      }
+
+      if (category == null) {
+        throw 'Veuillez sélectionner une catégorie';
+      }
+
+      if (code.isEmpty) {
+        throw 'Veuillez entrer le code de confirmation';
+      }
+
+      if (!RegExp(r'^\d{6}$').hasMatch(code)) {
+        throw 'Le code doit être composé de 6 chiffres';
+      }
+
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        throw 'Session expirée, veuillez vous reconnecter';
+      }
+
       // Vérifier le code (simulé ici, à remplacer par une API opérateur réelle)
       final isCodeValid = await _simulateCodeVerification(code);
       if (!isCodeValid) {
-        _showError('Code de confirmation invalide');
-        return;
+        throw 'Code de confirmation invalide';
       }
 
       // Vérifier si le numéro du destinataire existe
       final recipientQuery = await FirebaseFirestore.instance
           .collection('utilisateurs')
-          .where('numeroTelephone', isEqualTo: phoneNumber)
+          .where('numeroTelephone', isEqualTo: recipientPhone)
           .limit(1)
           .get();
 
       if (recipientQuery.size == 0) {
-        _showError('Aucun compte associé à $phoneNumber');
-        return;
+        throw 'Aucun compte associé à $recipientPhone';
       }
 
       final recipientUid = recipientQuery.docs.first.id;
-      final senderPhone = (await FirebaseFirestore.instance
+      final senderDoc = await FirebaseFirestore.instance
           .collection('utilisateurs')
           .doc(currentUser.uid)
-          .get())
-          .data()?['numeroTelephone'] as String?;
+          .get();
 
-      if (senderPhone == phoneNumber) {
-        _showError('Vous ne pouvez pas vous transférer de l\'argent à vous-même');
-        return;
+      final senderPhone = senderDoc.data()?['numeroTelephone'] as String?;
+      if (senderPhone == null) {
+        throw 'Votre numéro de téléphone n\'est pas configuré';
+      }
+
+      if (senderPhone == recipientPhone) {
+        throw 'Vous ne pouvez pas vous transférer de l\'argent à vous-même';
+      }
+
+      // Vérifier le solde de l'expéditeur
+      final senderAccount = await FirebaseFirestore.instance
+          .collection('comptesMobiles')
+          .doc(currentUser.uid)
+          .get();
+
+      if (!senderAccount.exists) {
+        throw 'Votre compte mobile n\'est pas configuré';
+      }
+
+      final senderBalance = (senderAccount.data()!['montantDisponible'] as num?)?.toDouble() ?? 0.0;
+      if (senderBalance < amount) {
+        throw 'Solde insuffisant (${senderBalance.toStringAsFixed(2)} FCFA)';
       }
 
       // Effectuer la transaction
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        final senderRef = FirebaseFirestore.instance.collection('comptesMobiles').doc(currentUser.uid);
-        final recipientRef = FirebaseFirestore.instance.collection('comptesMobiles').doc(recipientUid);
-        final depenseRef = FirebaseFirestore.instance.collection('depenses').doc();
-        final revenuRef = FirebaseFirestore.instance.collection('revenus').doc();
-        final transactionRef = FirebaseFirestore.instance.collection('transactions').doc();
-
-        // Récupérer les comptes
-        final senderCompte = await transaction.get(senderRef);
-        final recipientCompte = await transaction.get(recipientRef);
-
-        // Vérifications
-        if (!senderCompte.exists) {
-          throw Exception('Votre compte mobile n\'est pas configuré');
-        }
-        if (!recipientCompte.exists) {
-          throw Exception('Le compte mobile du destinataire n\'est pas configuré');
-        }
-
-        final senderMontant = (senderCompte.data()!['montantDisponible'] as num?)?.toDouble() ?? 0.0;
-        if (senderMontant < amount!) {
-          throw Exception('Solde insuffisant pour effectuer le transfert');
-        }
-
-        // Débiter le compte de l'expéditeur
-        transaction.update(senderRef, {
-          'montantDisponible': FieldValue.increment(-amount),
-          'derniereMiseAJour': FieldValue.serverTimestamp(),
-        });
-
-        // Créditer le compte du destinataire
-        transaction.update(recipientRef, {
-          'montantDisponible': FieldValue.increment(amount),
-          'derniereMiseAJour': FieldValue.serverTimestamp(),
-        });
-
-        // Enregistrer la dépense pour l'expéditeur
-        transaction.set(depenseRef, {
-          'userId': currentUser.uid,
-          'montant': amount,
-          'categorie': category!,
-          'description': 'Transfert envoyé via ${_selectedOperator == 'orange' ? 'Orange Money' : 'MTN Mobile Money'} à $phoneNumber',
-          'dateCreation': FieldValue.serverTimestamp(),
-        });
-
-        // Enregistrer le revenu pour le destinataire
-        transaction.set(revenuRef, {
-          'userId': recipientUid,
-          'montant': amount,
-          'categorie': category,
-          'description': 'Transfert reçu via ${_selectedOperator == 'orange' ? 'Orange Money' : 'MTN Mobile Money'} de $senderPhone',
-          'dateCreation': FieldValue.serverTimestamp(),
-        });
-
-        // Enregistrer la transaction
-        transaction.set(transactionRef, {
-          'expediteurId': currentUser.uid,
-          'destinataireId': recipientUid,
-          'users': [currentUser.uid, recipientUid],
-          'montant': amount,
-          'typeTransaction': 'transfert',
-          'categorie': category,
-          'description': 'Transfert via ${_selectedOperator == 'orange' ? 'Orange Money' : 'MTN Mobile Money'} de $senderPhone à $phoneNumber',
-          'dateHeure': FieldValue.serverTimestamp(),
-          'expediteurDeleted': null,
-          'destinataireDeleted': null,
-        });
-      });
+      await _processTransfer(
+        currentUser: currentUser,
+        recipientUid: recipientUid,
+        recipientPhone: recipientPhone,
+        senderPhone: senderPhone,
+        amount: amount,
+        category: category,
+      );
 
       _resetForm();
-      _showSuccess('Transfert de ${amount?.toStringAsFixed(2)} FCFA effectué avec succès !');
+      _showSuccess('Transfert de ${amount.toStringAsFixed(2)} FCFA effectué avec succès !');
+    } on FirebaseException catch (e) {
+      _showError('Erreur Firebase: ${e.message ?? 'Une erreur est survenue'}');
     } catch (e) {
-      _showError('Erreur lors du transfert : $e');
-      print('Erreur détaillée : $e');
+      _showError(e.toString());
+    } finally {
+      setState(() => _isProcessing = false);
     }
   }
 
-  void _validateAndShowCodeField() {
-    final phoneNumber = '$_selectedCountryCode ${_recipientController.text.trim()}';
-    final amountText = _amountController.text.trim();
-    final amount = double.tryParse(amountText.replaceAll(RegExp(r'[^0-9.]'), ''));
-    final category = _selectedCategory;
+  Future<void> _processTransfer({
+    required User currentUser,
+    required String recipientUid,
+    required String recipientPhone,
+    required String senderPhone,
+    required double amount,
+    required String category,
+  }) async {
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final senderRef = FirebaseFirestore.instance.collection('comptesMobiles').doc(currentUser.uid);
+      final recipientRef = FirebaseFirestore.instance.collection('comptesMobiles').doc(recipientUid);
+      final depenseRef = FirebaseFirestore.instance.collection('depenses').doc();
+      final revenuRef = FirebaseFirestore.instance.collection('revenus').doc();
+      final transactionRef = FirebaseFirestore.instance.collection('transactions').doc();
 
-    if (_recipientController.text.isEmpty) {
-      _showError('Veuillez entrer un numéro de téléphone');
-      return;
-    }
+      // Vérifier à nouveau le solde dans la transaction
+      final senderAccount = await transaction.get(senderRef);
+      final senderBalance = (senderAccount.data()!['montantDisponible'] as num).toDouble();
+      if (senderBalance < amount) {
+        throw 'Solde insuffisant dans la transaction';
+      }
 
-    if (!RegExp(r'^[0-9]{8,15}$').hasMatch(_recipientController.text.trim())) {
-      _showError('Format de numéro invalide (8-15 chiffres)');
-      return;
-    }
+      // Débiter le compte de l'expéditeur
+      transaction.update(senderRef, {
+        'montantDisponible': FieldValue.increment(-amount),
+        'derniereMiseAJour': FieldValue.serverTimestamp(),
+      });
 
-    if (amount == null || amount <= 0) {
-      _showError('Montant invalide (doit être > 0)');
-      return;
-    }
+      // Créditer le compte du destinataire
+      transaction.update(recipientRef, {
+        'montantDisponible': FieldValue.increment(amount),
+        'derniereMiseAJour': FieldValue.serverTimestamp(),
+      });
 
-    if (category == null) {
-      _showError('Veuillez sélectionner une catégorie');
-      return;
-    }
+      // Enregistrer la dépense pour l'expéditeur
+      transaction.set(depenseRef, {
+        'userId': currentUser.uid,
+        'montant': amount,
+        'categorie': category,
+        'description': 'Transfert envoyé via ${_selectedOperator == 'orange' ? 'Orange Money' : 'MTN Mobile Money'} à $recipientPhone',
+        'dateCreation': FieldValue.serverTimestamp(),
+      });
 
-    setState(() {
-      _showCodeField = true;
+      // Enregistrer le revenu pour le destinataire
+      transaction.set(revenuRef, {
+        'userId': recipientUid,
+        'montant': amount,
+        'categorie': category,
+        'description': 'Transfert reçu via ${_selectedOperator == 'orange' ? 'Orange Money' : 'MTN Mobile Money'} de $senderPhone',
+        'dateCreation': FieldValue.serverTimestamp(),
+      });
+
+      // Enregistrer la transaction
+      transaction.set(transactionRef, {
+        'expediteurId': currentUser.uid,
+        'destinataireId': recipientUid,
+        'users': [currentUser.uid, recipientUid],
+        'montant': amount,
+        'typeTransaction': 'transfert',
+        'categorie': category,
+        'description': 'Transfert via ${_selectedOperator == 'orange' ? 'Orange Money' : 'MTN Mobile Money'} de $senderPhone à $recipientPhone',
+        'dateHeure': FieldValue.serverTimestamp(),
+        'expediteurDeleted': null,
+        'destinataireDeleted': null,
+      });
     });
+  }
+
+  void _validateAndShowCodeField() {
+    try {
+      final recipientPhone = '$_selectedCountryCode ${_recipientController.text.trim()}';
+      final amountText = _amountController.text.trim();
+      final amount = double.tryParse(amountText.replaceAll(RegExp(r'[^0-9.]'), ''));
+      final category = _selectedCategory;
+
+      if (_recipientController.text.isEmpty) {
+        throw 'Veuillez entrer un numéro de téléphone';
+      }
+
+      if (!RegExp(r'^[0-9]{8,15}$').hasMatch(_recipientController.text.trim())) {
+        throw 'Format de numéro invalide (8-15 chiffres)';
+      }
+
+      if (amount == null || amount <= 0) {
+        throw 'Montant invalide (doit être > 0)';
+      }
+
+      if (category == null) {
+        throw 'Veuillez sélectionner une catégorie';
+      }
+
+      setState(() {
+        _showCodeField = true;
+      });
+    } catch (e) {
+      _showError(e.toString());
+    }
   }
 
   Future<bool> _simulateCodeVerification(String code) async {
     // À remplacer par une API réelle pour vérifier le code auprès de l'opérateur
-    // Pour cette simulation, on accepte tout code de 6 chiffres
+    await Future.delayed(const Duration(seconds: 1)); // Simulation de latence
     return RegExp(r'^\d{6}$').hasMatch(code);
   }
 
@@ -637,6 +687,10 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
         ),
         backgroundColor: AppColors.errorColor,
         duration: const Duration(seconds: 5),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
       ),
     );
   }
@@ -658,6 +712,10 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
         ),
         backgroundColor: AppColors.successColor,
         duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
       ),
     );
   }

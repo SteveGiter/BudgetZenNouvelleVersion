@@ -1,4 +1,5 @@
 import 'package:budget_zen/services/firebase/firestore.dart';
+import 'package:budget_zen/services/firebase/auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ class DashboardAdminPage extends StatefulWidget {
 
 class _DashboardAdminPageState extends State<DashboardAdminPage> {
   final FirestoreService _firestore = FirestoreService();
+  final Auth _auth = Auth();
   final DateFormat dateFormat = DateFormat('EEEE dd MMMM yyyy \'à\' HH:mm:ss', 'fr_FR');
 
   @override
@@ -27,16 +29,16 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
         showBackArrow: false,
         showDarkModeButton: true,
       ),
-      backgroundColor: Colors.transparent, // Keep Scaffold background transparent
+      backgroundColor: Colors.transparent,
       body: Column(
         children: [
-          Expanded( // Use Expanded to fill available space
+          Expanded(
             child: Container(
               decoration: BoxDecoration(
                 image: DecorationImage(
                   image: const AssetImage('assets/Administrateur.png'),
-                  fit: BoxFit.cover, // Cover the entire container
-                  alignment: Alignment.bottomCenter, // Align image bottom with container bottom
+                  fit: BoxFit.cover,
+                  alignment: Alignment.bottomCenter,
                   colorFilter: ColorFilter.mode(
                     isDarkMode ? Colors.black.withOpacity(0.4) : Colors.white.withOpacity(0.2),
                     BlendMode.darken,
@@ -149,7 +151,7 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
                     ),
                   ),
                 ),
-                if (!isCurrentUser) // N'affiche le bouton de suppression que si ce n'est pas l'utilisateur actuel
+                if (!isCurrentUser)
                   IconButton(
                     icon: const Icon(Icons.delete, color: Colors.red),
                     onPressed: () {
@@ -257,83 +259,104 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
   }
 
   Future<void> _deleteUserAndData(String uid) async {
-    final batch = _firestore.firestore.batch();
+    try {
+      final batch = _firestore.firestore.batch();
 
-    // Delete user document
-    final userRef = _firestore.firestore.collection('utilisateurs').doc(uid);
-    batch.delete(userRef);
+      // Suppression du document utilisateur
+      final userRef = _firestore.firestore.collection('utilisateurs').doc(uid);
+      batch.delete(userRef);
 
-    // Delete budget document
-    final budgetRef = _firestore.firestore.collection('budgets').doc(uid);
-    batch.delete(budgetRef);
+      // Suppression du document budget
+      final budgetRef = _firestore.firestore.collection('budgets').doc(uid);
+      batch.delete(budgetRef);
 
-    // Delete statistics document
-    final statsRef = _firestore.firestore.collection('statistiques').doc(uid);
-    batch.delete(statsRef);
+      // Suppression du document statistiques
+      final statsRef = _firestore.firestore.collection('statistiques').doc(uid);
+      batch.delete(statsRef);
 
-    // Delete transactions where user is involved
-    final transactionsSnapshot = await _firestore.firestore
-        .collection('transactions')
-        .where('users', arrayContains: uid)
-        .get();
-    for (var doc in transactionsSnapshot.docs) {
-      batch.delete(doc.reference);
+      // Suppression des transactions impliquant l'utilisateur
+      final transactionsSnapshot = await _firestore.firestore
+          .collection('transactions')
+          .where('users', arrayContains: uid)
+          .get();
+      for (var doc in transactionsSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Suppression des objectifs d'épargne
+      final objectifsSnapshot = await _firestore.firestore
+          .collection('objectifsEpargne')
+          .where('userId', isEqualTo: uid)
+          .get();
+      for (var doc in objectifsSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Suppression des revenus
+      final revenusSnapshot = await _firestore.firestore
+          .collection('revenus')
+          .where('userId', isEqualTo: uid)
+          .get();
+      for (var doc in revenusSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Suppression des dépenses
+      final depensesSnapshot = await _firestore.firestore
+          .collection('depenses')
+          .where('userId', isEqualTo: uid)
+          .get();
+      for (var doc in depensesSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Suppression des épargnes
+      final epargnesSnapshot = await _firestore.firestore
+          .collection('epargnes')
+          .where('userId', isEqualTo: uid)
+          .get();
+      for (var doc in epargnesSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Suppression de l'historique de connexion
+      final historiqueSnapshot = await _firestore.firestore
+          .collection('historique_connexions')
+          .where('uid', isEqualTo: uid)
+          .get();
+      for (var doc in historiqueSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Suppression du compte mobile
+      final compteMobileRef = _firestore.firestore.collection('comptesMobiles').doc(uid);
+      batch.delete(compteMobileRef);
+
+      // Validation du batch Firestore
+      await batch.commit();
+
+      // Annulation des abonnements actifs
+      _firestore.cancelStatisticsSubscription(uid);
+
+      // Suppression du compte dans Firebase Authentication
+      try {
+        // Note : La suppression directe via FirebaseAuth.instance.currentUser.delete()
+        // n'est pas possible ici car l'utilisateur actuel n'est pas l'utilisateur à supprimer.
+        // Une solution serait d'utiliser l'API Admin SDK, mais cela nécessite un backend.
+        // Pour l'instant, on peut signaler que cette opération nécessite des privilèges admin.
+        print('Note : La suppression du compte Firebase Authentication nécessite l\'Admin SDK.');
+      } catch (e) {
+        print('Erreur lors de la tentative de suppression du compte Auth: $e');
+        throw Exception('Impossible de supprimer le compte d\'authentification. Utilisez l\'Admin SDK.');
+      }
+    } catch (e) {
+      print('Erreur lors de la suppression des données: $e');
+      rethrow;
     }
-
-    // Delete savings goals
-    final objectifsSnapshot = await _firestore.firestore
-        .collection('objectifsEpargne')
-        .where('userId', isEqualTo: uid)
-        .get();
-    for (var doc in objectifsSnapshot.docs) {
-      batch.delete(doc.reference);
-    }
-
-    // Delete revenues
-    final revenusSnapshot = await _firestore.firestore
-        .collection('revenus')
-        .where('userId', isEqualTo: uid)
-        .get();
-    for (var doc in revenusSnapshot.docs) {
-      batch.delete(doc.reference);
-    }
-
-    // Delete expenses
-    final depensesSnapshot = await _firestore.firestore
-        .collection('depenses')
-        .where('userId', isEqualTo: uid)
-        .get();
-    for (var doc in depensesSnapshot.docs) {
-      batch.delete(doc.reference);
-    }
-
-    // Delete savings
-    final epargnesSnapshot = await _firestore.firestore
-        .collection('epargnes')
-        .where('userId', isEqualTo: uid)
-        .get();
-    for (var doc in epargnesSnapshot.docs) {
-      batch.delete(doc.reference);
-    }
-
-    // Delete connection history
-    final historiqueSnapshot = await _firestore.firestore
-        .collection('historique_connexions')
-        .where('uid', isEqualTo: uid)
-        .get();
-    for (var doc in historiqueSnapshot.docs) {
-      batch.delete(doc.reference);
-    }
-
-    // Commit the batch
-    await batch.commit();
-
-    // Cancel any active subscriptions
-    _firestore.cancelStatisticsSubscription(uid);
   }
 }
 
-// Extension to capitalize strings
+// Extension pour capitaliser les chaînes
 extension StringExtension on String {
   String capitalize() {
     return "${this[0].toUpperCase()}${substring(1).toLowerCase()}";

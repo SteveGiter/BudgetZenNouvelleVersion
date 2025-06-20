@@ -29,6 +29,11 @@ class _RechargePageState extends State<RechargePage> {
     '+235': '🇹🇩 Tchad',
   };
 
+  // Limites pour la recharge
+  static const double _minAmount = 100.0;
+  static const double _maxAmount = 1000000.0;
+  static const int _maxRechargeAttemptsPerHour = 5;
+
   @override
   void initState() {
     super.initState();
@@ -36,19 +41,38 @@ class _RechargePageState extends State<RechargePage> {
   }
 
   Future<void> _loadUserPhoneNumber() async {
-    if (_currentUser != null) {
+    if (_currentUser == null) {
+      _showError('Utilisateur non authentifié. Veuillez vous reconnecter.');
+      Navigator.pop(context);
+      return;
+    }
+
+    try {
       final userDoc = await FirebaseFirestore.instance
           .collection('utilisateurs')
           .doc(_currentUser!.uid)
           .get();
-      final phone = userDoc.data()?['numeroTelephone'] as String? ?? '';
-      if (phone.isNotEmpty) {
-        final parts = phone.split(' ');
-        setState(() {
-          _selectedCountryCode = parts[0];
-          _phoneController.text = parts.sublist(1).join(' ');
-        });
+      if (!userDoc.exists) {
+        _showError('Profil utilisateur introuvable. Veuillez compléter votre profil.');
+        return;
       }
+
+      final phone = userDoc.data()?['numeroTelephone'] as String? ?? '';
+      if (phone.isEmpty) {
+        _showError('Aucun numéro de téléphone associé. Veuillez en ajouter un dans votre profil.');
+        return;
+      }
+
+      final parts = phone.split(' ');
+      setState(() {
+        _selectedCountryCode = parts[0];
+        _phoneController.text = parts.sublist(1).join(' ');
+      });
+    } on FirebaseException catch (e) {
+      _showError('Erreur de chargement du numéro : ${e.message}');
+    } catch (e) {
+      _showError('Erreur inattendue : $e');
+      print('Erreur détaillée : $e');
     }
   }
 
@@ -153,7 +177,14 @@ class _RechargePageState extends State<RechargePage> {
       case 1:
         return _buildPhoneStep(isDarkMode);
       case 2:
-        return _buildAmountStep(isDarkMode);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildAmountField(isDarkMode),
+            const SizedBox(height: 20),
+            _buildCurrentBalance(isDarkMode),
+          ],
+        );
       case 3:
         return _buildCodeStep(isDarkMode);
       default:
@@ -237,7 +268,7 @@ class _RechargePageState extends State<RechargePage> {
     );
   }
 
-  Widget _buildAmountStep(bool isDarkMode) {
+  Widget _buildAmountField(bool isDarkMode) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -280,6 +311,31 @@ class _RechargePageState extends State<RechargePage> {
     );
   }
 
+  Widget _buildCurrentBalance(bool isDarkMode) {
+    return StreamBuilder<double>(
+      stream: _firestoreService.streamMontantDisponible(_currentUser!.uid),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Text(
+            'Erreur de chargement du solde',
+            style: TextStyle(
+              color: isDarkMode ? AppColors.darkErrorColor : AppColors.errorColor,
+              fontSize: 12,
+            ),
+          );
+        }
+        final balance = snapshot.data ?? 0.0;
+        return Text(
+          'Solde disponible : ${balance.toStringAsFixed(2)} FCFA',
+          style: TextStyle(
+            color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
+            fontSize: 12,
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildCodeStep(bool isDarkMode) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -298,7 +354,7 @@ class _RechargePageState extends State<RechargePage> {
           keyboardType: TextInputType.number,
           obscureText: true,
           decoration: InputDecoration(
-            hintText: 'Entrez le code',
+            hintText: 'Entrez le code (6 chiffres)',
             filled: true,
             fillColor: isDarkMode ? Colors.grey[800] : Colors.grey[100],
             border: OutlineInputBorder(
@@ -414,47 +470,101 @@ class _RechargePageState extends State<RechargePage> {
   }
 
   Future<void> _handleNext() async {
-    if (_currentStep == 1) {
-      if (_phoneController.text.isEmpty) {
-        _showError('Veuillez entrer un numéro de téléphone.');
-        return;
-      }
-      if (!RegExp(r'^[0-9]{8,15}$').hasMatch(_phoneController.text.trim())) {
-        _showError('Format de numéro invalide (8-15 chiffres).');
-        return;
-      }
-      final fullPhone = '$_selectedCountryCode ${_phoneController.text.trim()}';
-      final userDoc = await FirebaseFirestore.instance
-          .collection('utilisateurs')
-          .doc(_currentUser!.uid)
-          .get();
-      if (userDoc.data()?['numeroTelephone'] != fullPhone) {
-        _showError('Le numéro doit correspondre à celui de votre compte.');
-        return;
-      }
-      setState(() => _currentStep++);
-    } else if (_currentStep == 2) {
-      final amount = double.tryParse(_amountController.text.trim());
-      if (amount == null || amount <= 0) {
-        _showError('Montant invalide (doit être > 0).');
-        return;
-      }
-      setState(() => _currentStep++);
-    } else if (_currentStep == 3) {
-      final code = _codeController.text.trim();
-      final amount = double.parse(_amountController.text.trim());
-      if (code.isEmpty) {
-        _showError('Veuillez entrer le code de confirmation.');
-        return;
-      }
-      try {
+    if (_currentUser == null) {
+      _showError('Utilisateur non authentifié. Veuillez vous reconnecter.');
+      Navigator.pop(context);
+      return;
+    }
+
+    try {
+      if (_currentStep == 1) {
+        // Étape 1 : Validation du numéro de téléphone
+        if (_phoneController.text.isEmpty) {
+          _showError('Veuillez entrer un numéro de téléphone.');
+          return;
+        }
+        if (!RegExp(r'^[0-9]{8,15}$').hasMatch(_phoneController.text.trim())) {
+          _showError('Format de numéro invalide (8-15 chiffres).');
+          return;
+        }
+
+        final fullPhone = '$_selectedCountryCode ${_phoneController.text.trim()}';
+        final userDoc = await FirebaseFirestore.instance
+            .collection('utilisateurs')
+            .doc(_currentUser!.uid)
+            .get();
+        if (!userDoc.exists) {
+          _showError('Profil utilisateur introuvable. Veuillez compléter votre profil.');
+          return;
+        }
+        if (userDoc.data()?['numeroTelephone'] != fullPhone) {
+          _showError('Le numéro doit correspondre à celui de votre compte.');
+          return;
+        }
+
+        // Vérifier l'unicité du numéro
+        final isUnique = await _firestoreService.isPhoneNumberUnique(
+          fullPhone,
+          userDoc.data()?['provider'] ?? 'unknown',
+          _currentUser!.uid,
+        );
+        if (!isUnique) {
+          _showError('Ce numéro est déjà utilisé par un autre compte.');
+          return;
+        }
+
+        setState(() => _currentStep++);
+      } else if (_currentStep == 2) {
+        // Étape 2 : Validation du montant
+        final amount = double.tryParse(_amountController.text.trim());
+        if (amount == null) {
+          _showError('Montant invalide. Entrez un nombre valide.');
+          return;
+        }
+        if (amount < _minAmount) {
+          _showError('Montant minimum : $_minAmount FCFA.');
+          return;
+        }
+        if (amount > _maxAmount) {
+          _showError('Montant maximum : $_maxAmount FCFA.');
+          return;
+        }
+
+        // Vérifier le nombre de tentatives de recharge
+        if (await _exceededRechargeAttempts()) {
+          _showError('Trop de tentatives de recharge. Réessayez dans une heure.');
+          return;
+        }
+
+        setState(() => _currentStep++);
+      } else if (_currentStep == 3) {
+        // Étape 3 : Validation du code et recharge
+        final code = _codeController.text.trim();
+        final amount = double.parse(_amountController.text.trim());
+
+        if (code.isEmpty) {
+          _showError('Veuillez entrer le code de confirmation.');
+          return;
+        }
+        if (!RegExp(r'^\d{6}$').hasMatch(code)) {
+          _showError('Le code doit être composé de 6 chiffres.');
+          return;
+        }
+
         // Vérifier si le compte mobile existe
         final compteDoc = await FirebaseFirestore.instance
             .collection('comptesMobiles')
             .doc(_currentUser!.uid)
             .get();
         if (!compteDoc.exists) {
-          _showError('Compte mobile non configuré.');
+          _showError('Compte mobile non configuré. Contactez le support.');
+          return;
+        }
+
+        // Vérifier l'expiration du code (simulé avec un champ codeExpiration)
+        final codeExpiration = compteDoc.data()?['codeExpiration'] as Timestamp?;
+        if (codeExpiration != null && codeExpiration.toDate().isBefore(DateTime.now())) {
+          _showError('Code de confirmation expiré. Demandez un nouveau code.');
           return;
         }
 
@@ -465,14 +575,29 @@ class _RechargePageState extends State<RechargePage> {
           return;
         }
 
-        // Effectuer la recharge
+        // Effectuer la recharge dans une transaction
         await FirebaseFirestore.instance.runTransaction((transaction) async {
           final compteRef = FirebaseFirestore.instance
               .collection('comptesMobiles')
               .doc(_currentUser!.uid);
+          final rechargeAttemptRef = FirebaseFirestore.instance
+              .collection('recharge_attempts')
+              .doc('${_currentUser!.uid}_${DateTime.now().hour}');
+
+          // Mettre à jour le compte mobile
           transaction.update(compteRef, {
             'montantDisponible': FieldValue.increment(amount),
             'derniereMiseAJour': FieldValue.serverTimestamp(),
+            // Simuler la réinitialisation du code après utilisation
+            'codeExpiration': null,
+          });
+
+          // Enregistrer la tentative de recharge
+          transaction.set(rechargeAttemptRef, {
+            'userId': _currentUser!.uid,
+            'timestamp': FieldValue.serverTimestamp(),
+            'amount': amount,
+            'operator': _selectedOperator,
           });
         });
 
@@ -486,11 +611,55 @@ class _RechargePageState extends State<RechargePage> {
 
         _showSuccess('Recharge de ${amount.toStringAsFixed(2)} FCFA effectuée !');
         Navigator.pop(context);
-      } catch (e) {
-        _showError('Erreur lors de la recharge : $e');
-        print('Erreur détaillée : $e');
       }
+    } on FirebaseException catch (e) {
+      String errorMessage;
+      switch (e.code) {
+        case 'network-request-failed':
+          errorMessage = 'Aucune connexion réseau. Vérifiez votre connexion.';
+          break;
+        case 'permission-denied':
+          errorMessage = 'Accès refusé. Contactez le support.';
+          break;
+        default:
+          errorMessage = 'Erreur Firestore : ${e.message}';
+      }
+      _showError(errorMessage);
+      print('Erreur Firestore : $e');
+    } catch (e) {
+      _showError('Erreur inattendue : $e');
+      print('Erreur détaillée : $e');
     }
+  }
+
+  Future<bool> _exceededRechargeAttempts() async {
+    final now = DateTime.now();
+    final hourKey = '${_currentUser!.uid}_${now.hour}';
+    final attemptDoc = await FirebaseFirestore.instance
+        .collection('recharge_attempts')
+        .doc(hourKey)
+        .get();
+
+    if (!attemptDoc.exists) {
+      return false;
+    }
+
+    final attempts = (attemptDoc.data()?['attemptCount'] as int?) ?? 0;
+    if (attempts >= _maxRechargeAttemptsPerHour) {
+      return true;
+    }
+
+    // Incrémenter le compteur
+    await FirebaseFirestore.instance
+        .collection('recharge_attempts')
+        .doc(hourKey)
+        .set({
+      'userId': _currentUser!.uid,
+      'attemptCount': FieldValue.increment(1),
+      'lastAttempt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    return false;
   }
 
   void _showError(String message) {

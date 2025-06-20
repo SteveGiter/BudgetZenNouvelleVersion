@@ -26,13 +26,7 @@ class Auth {
     try {
       final result = await GoogleApiAvailability.instance.checkGooglePlayServicesAvailability();
       print('Statut Google Play Services: $result');
-      if (result == GooglePlayServicesAvailability.success) {
-        return true;
-      } else {
-        print('Google Play Services non disponible, tentative de mise à jour');
-        await GoogleApiAvailability.instance.makeGooglePlayServicesAvailable();
-        return false;
-      }
+      return result == GooglePlayServicesAvailability.success;
     } catch (e) {
       print('Erreur lors de la vérification de Google Play Services: $e');
       return false;
@@ -56,7 +50,7 @@ class Auth {
     }
   }
 
-  Future<UserCredential?> signInWithGoogle() async {
+  Future<(UserCredential?, bool)> signInWithGoogle() async {
     try {
       print('Étape 1: Vérification réseau');
       if (!await _isNetworkAvailable()) {
@@ -69,8 +63,8 @@ class Auth {
       print('Étape 2: Vérification Google Play Services');
       if (!await _checkGooglePlayServices()) {
         throw FirebaseAuthException(
-          code: 'google-services-update-required',
-          message: 'Mise à jour de Google Play Services requise.',
+          code: 'google-services-error',
+          message: 'Erreur Google Play Services.',
         );
       }
 
@@ -81,7 +75,7 @@ class Auth {
       );
 
       print('Étape 4: Déconnexion préalable pour forcer la sélection de compte');
-      await googleSignIn.signOut(); // Déconnecte tout compte Google pré-sélectionné
+      await googleSignIn.signOut();
       print('Étape 5: Affichage de la boîte de dialogue de sélection de compte Google');
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
       if (googleUser == null) {
@@ -102,16 +96,18 @@ class Auth {
       final UserCredential userCredential = await _firebaseAuth.signInWithCredential(credential);
       final User? user = userCredential.user;
 
+      bool isNewUser = false;
       if (user != null) {
         print("Étape 9: Vérification de l'existence de l'utilisateur dans Firestore");
         final bool exists = await FirestoreService().userExists(user.uid);
+        isNewUser = !exists;
 
         if (!exists) {
           print('Étape 10: Création du profil utilisateur');
           await FirestoreService().createOrUpdateUserProfile(
             uid: user.uid,
             nomPrenom: user.displayName ?? '',
-            email: user.email!,
+            email: user.email ?? '',
             provider: 'google',
           );
         } else {
@@ -121,7 +117,7 @@ class Auth {
       }
 
       print('Connexion Google réussie: ${user?.email}');
-      return userCredential;
+      return (userCredential, isNewUser);
     } on FirebaseAuthException catch (e) {
       print('FirebaseAuthException: ${e.code} - ${e.message}');
       rethrow;
@@ -165,9 +161,9 @@ class Auth {
           await FirestoreService().createOrUpdateUserProfile(
             uid: user.uid,
             nomPrenom: nomComplet,
-            email: user.email!,
-            provider: 'email',
+            email: user.email ?? '',
             numeroTelephone: telephone,
+            provider: 'email',
           );
         }
         print('Création de compte réussie');

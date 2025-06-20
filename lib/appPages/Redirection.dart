@@ -92,7 +92,7 @@ class _RedirectionPageState extends State<RedirectionPage> {
         }
 
         final role = snapshot.data;
-        final route = role == 'administrateur' ? '/AdminPage' : '/HomePage';
+        final route = role == 'administrateur' ? '/dashboardPage' : '/HomePage';
 
         _redirectUser(context, route);
 

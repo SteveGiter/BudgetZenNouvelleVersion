@@ -147,7 +147,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             '/ResetPasswordPage': (context) => const ResetPasswordPage(),
             '/RedirectionPage': (context) => const RedirectionPage(),
             '/HomePage': (context) => const HomePage(),
-            '/AdminPage': (context) => const DashboardAdminPage(),
             '/HistoriqueTransactionPage': (context) => const HistoriqueTransactionPage(),
             '/money_transfer': (context) => const MoneyTransferPage(),
             '/SettingsPage': (context) => const SettingsPage(),
