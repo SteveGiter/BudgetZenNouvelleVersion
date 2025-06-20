@@ -85,7 +85,7 @@ class _AddSavingsDialogState extends State<AddSavingsDialog> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur lors du chargement des objectifs : $e'),
+            content: Text('Une erreur s\'est produite lors du chargement de vos objectifs. Veuillez réessayer plus tard.'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 4),
           ),
@@ -206,7 +206,7 @@ class _AddSavingsDialogState extends State<AddSavingsDialog> {
                 if (_selectedGoalId == null || _selectedGoalCategory == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Veuillez sélectionner un objectif valide.'),
+                      content: Text('Veuillez sélectionner un objectif d\'épargne valide.'),
                       backgroundColor: Colors.red,
                       duration: Duration(seconds: 4),
                     ),
@@ -236,7 +236,7 @@ class _AddSavingsDialogState extends State<AddSavingsDialog> {
               } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Erreur lors de l\'ajout : $e'),
+                    content: Text('Une erreur s\'est produite lors de l\'ajout de l\'épargne. Vérifiez votre connexion ou réessayez.'),
                     backgroundColor: Colors.red,
                     duration: const Duration(seconds: 4),
                   ),

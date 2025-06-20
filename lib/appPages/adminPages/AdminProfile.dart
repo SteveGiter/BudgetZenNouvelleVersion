@@ -423,7 +423,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
     return Scaffold(
       appBar: CustomAppBar(
         title: 'Profil Administrateur',
-        showBackArrow: true,
+        showBackArrow: false,
         showDarkModeButton: true,
       ),
       backgroundColor: isDarkMode ? Colors.grey[900] : Colors.grey[100],

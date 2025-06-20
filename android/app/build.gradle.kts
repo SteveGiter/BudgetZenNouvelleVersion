@@ -11,7 +11,7 @@ plugins {
 android {
     namespace = "com.example.budgetzen"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "27.0.12077973" // <- CORRECTION ICI ✅ (Pour s'assurer du téléversement de l'appli dans ma version d'android de mon portable (SM E135F))
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -27,7 +27,7 @@ android {
         applicationId = "com.example.budgetzen"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 23  // ✅ valeur corrigée ici (indispensable pour la version actuelle du service Auth de Firebase)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

@@ -430,11 +430,11 @@ class _HomePageState extends State<HomePage> {
   Future<void> _showAddSavingsDialog(BuildContext context) async {
     if (_currentUser == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vous devez être connecté pour ajouter une épargne'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      const SnackBar(
+        content: Text('Vous devez vous connecter pour ajouter une épargne.'),
+        backgroundColor: Colors.red,
+      ),
+    );
       return;
     }
 
@@ -483,7 +483,7 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erreur: ${e.toString()}'),
+          content: Text('Une erreur s\'est produite. Vérifiez votre connexion ou réessayez plus tard.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -550,17 +550,17 @@ class _HomePageState extends State<HomePage> {
         final objectifSnap = await transaction.get(objectifRef);
 
         if (!compteSnap.exists) {
-          throw Exception('Document compte introuvable.');
+          throw Exception('Votre compte n\'a pas été trouvé. Configurez-le dans les paramètres.');
         }
         if (!objectifSnap.exists) {
-          throw Exception('Objectif d\'épargne introuvable.');
+          throw Exception('L\'objectif sélectionné n\'existe plus. Choisissez un autre.');
         }
 
         final compteData = compteSnap.data();
         final objectifData = objectifSnap.data();
 
         if (compteData == null || objectifData == null) {
-          throw Exception('Données invalides ou corrompues.');
+          throw Exception('Une erreur technique est survenue. Contactez le support si cela persiste.');
         }
 
         final currentMontant = (compteData['montantDisponible'] as num?)?.toDouble() ?? 0.0;
@@ -570,15 +570,15 @@ class _HomePageState extends State<HomePage> {
         final dateLimite = objectifData['dateLimite'] as Timestamp?;
 
         if (dateLimite != null && dateLimite.toDate().isBefore(DateTime.now())) {
-          throw Exception('Objectif expiré.');
+          throw Exception('Cet objectif est expiré. Sélectionnez un objectif actif.');
         }
 
         if (isCompleted || currentMontantActuel >= montantCible) {
-          throw Exception('Cet objectif est déjà atteint.');
+          throw Exception('Cet objectif est déjà complété. Choisissez un autre.');
         }
 
         if (currentMontant < amount) {
-          throw Exception('Solde insuffisant.');
+          throw Exception('Votre solde est trop faible pour cette épargne. Ajoutez des fonds.');
         }
 
         final epargneRef = FirebaseFirestore.instance.collection('epargnes').doc();
@@ -625,7 +625,7 @@ class _HomePageState extends State<HomePage> {
           content: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(child: Text('Erreur: ${e.toString()}')),
+              Expanded(child: Text('Erreur : Une erreur est survenue. Vérifiez votre solde ou réessayez.')),
               IconButton(
                 icon: const Icon(Icons.close, color: Colors.white),
                 onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),

@@ -12,14 +12,14 @@ class BudgetValidator {
       List<Map<String, dynamic>> savingsGoals) async {
     // Vérifier si un objectif est sélectionné
     if (selectedGoalId == null) {
-      _showSnackBar(context, 'Veuillez sélectionner un objectif d\'épargne.');
+      _showSnackBar(context, 'Veuillez choisir un objectif d\'épargne avant de continuer.');
       return false;
     }
 
     // Vérifier si l'objectif existe dans la liste
     final selectedGoal = savingsGoals.firstWhereOrNull((goal) => goal['id'] == selectedGoalId);
     if (selectedGoal == null) {
-      _showSnackBar(context, 'L\'objectif sélectionné est invalide ou n\'existe plus.');
+      _showSnackBar(context, 'L\'objectif sélectionné n\'est plus disponible. Choisissez un autre objectif.');
       return false;
     }
 
@@ -30,7 +30,7 @@ class BudgetValidator {
         .get();
 
     if (!compteDoc.exists) {
-      _showSnackBar(context, 'Votre compte mobile n\'existe pas. Veuillez configurer votre numéro de téléphone.');
+      _showSnackBar(context, 'Votre compte n\'est pas configuré. Ajoutez un numéro de téléphone pour continuer.');
       return false;
     }
 
@@ -38,14 +38,14 @@ class BudgetValidator {
 
     // Vérifier si le montant disponible est suffisant
     if (amount > montantDisponible) {
-      _showSnackBar(context, 'Votre solde est insuffisant pour ajouter cette épargne.');
+      _showSnackBar(context, 'Vous n\'avez pas assez d\'argent sur votre compte pour cette épargne.');
       return false;
     }
 
     // Vérifier si le montant dépasse le restant pour l'objectif
     final montantRestant = selectedGoal['montantCible'] - selectedGoal['montantActuel'];
     if (amount > montantRestant) {
-      _showSnackBar(context, 'Le montant dépasse le restant pour cet objectif (${montantRestant.toStringAsFixed(2)} FCFA).');
+      _showSnackBar(context, 'Le montant dépasse ce qui reste pour cet objectif. Maximum : ${montantRestant.toStringAsFixed(2)} FCFA.');
       return false;
     }
 

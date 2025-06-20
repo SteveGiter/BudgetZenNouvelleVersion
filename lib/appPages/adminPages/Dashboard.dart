@@ -18,6 +18,11 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
   final FirestoreService _firestore = FirestoreService();
   final Auth _auth = Auth();
   final DateFormat dateFormat = DateFormat('EEEE dd MMMM yyyy \'à\' HH:mm:ss', 'fr_FR');
+  String _searchQuery = '';
+  String _selectedFilter = 'Tout';
+
+  // Date actuelle mise à jour à 05:09 PM WAT, 20 juin 2025
+  final DateTime currentDate = DateTime(2025, 6, 20, 17, 9); // 05:09 PM WAT, June 20, 2025
 
   @override
   Widget build(BuildContext context) {
@@ -58,6 +63,10 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
                       ),
                     ),
                     const SizedBox(height: 16),
+                    _buildSearchBar(),
+                    const SizedBox(height: 8),
+                    _buildFilterButtons(context),
+                    const SizedBox(height: 8),
                     _buildUsersList(context),
                   ],
                 ),
@@ -78,6 +87,103 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
     );
   }
 
+  Widget _buildSearchBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: TextField(
+        onChanged: (value) {
+          setState(() {
+            _searchQuery = value.toLowerCase();
+          });
+        },
+        decoration: InputDecoration(
+          hintText: 'Rechercher par nom ou email...',
+          prefixIcon: const Icon(Icons.search),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: BorderSide(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.grey[600]!
+                  : Colors.grey[400]!,
+            ),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: BorderSide(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.grey[600]!
+                  : Colors.grey[400]!,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: BorderSide(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : Colors.black87,
+            ),
+          ),
+          filled: true,
+          fillColor: Theme.of(context).brightness == Brightness.dark
+              ? Colors.grey[800]!
+              : Colors.grey[200]!,
+        ),
+        style: TextStyle(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? Colors.white
+              : Colors.black87,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterButtons(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: ['Tout', 'Administrateur', 'Utilisateur']
+              .map((label) => Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: _buildFilterChip(label, context),
+          ))
+              .toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String label, BuildContext context) {
+    final isSelected = _selectedFilter == label;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    return FilterChip(
+      label: Text(label),
+      selected: isSelected,
+      selectedColor: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+      checkmarkColor: isDarkMode ? Colors.white : Colors.black87,
+      labelStyle: TextStyle(
+        color: isSelected
+            ? (isDarkMode ? Colors.white : Colors.black87)
+            : (isDarkMode ? Colors.grey[400] : Colors.grey[600]),
+      ),
+      backgroundColor: isDarkMode ? Colors.grey[800] : Colors.white,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(
+          color: isDarkMode ? Colors.grey[600]! : Colors.grey[400]!,
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      onSelected: (bool selected) {
+        setState(() {
+          _selectedFilter = selected ? label : 'Tout';
+        });
+      },
+    );
+  }
+
   Widget _buildUsersList(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore.firestore.collection('utilisateurs').snapshots(),
@@ -85,7 +191,7 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
         if (snapshot.hasError) {
           return Center(
             child: Text(
-              'Erreur: ${snapshot.error}',
+              'Erreur: Une erreur s\'est produite. Veuillez réessayer.',
               style: const TextStyle(color: Colors.red),
             ),
           );
@@ -99,7 +205,21 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
           return _buildEmptyState("Aucun utilisateur trouvé", context);
         }
 
-        final users = snapshot.data!.docs;
+        final users = snapshot.data!.docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final nomPrenom = (data['nomPrenom'] as String?)?.toLowerCase() ?? '';
+          final email = (data['email'] as String?)?.toLowerCase() ?? '';
+          final role = (data['role'] as String?)?.toLowerCase() ?? '';
+          if (_searchQuery.isNotEmpty &&
+              !nomPrenom.contains(_searchQuery) &&
+              !email.contains(_searchQuery)) return false;
+          if (_selectedFilter != 'Tout' && role != _selectedFilter.toLowerCase()) return false;
+          return true;
+        }).toList();
+
+        if (users.isEmpty) {
+          return _buildEmptyState("Aucun utilisateur trouvé pour cette recherche ou filtre", context);
+        }
 
         return ListView.builder(
           shrinkWrap: true,
@@ -247,7 +367,7 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
                   );
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Erreur lors de la suppression: $e")),
+                    SnackBar(content: Text("Erreur lors de la suppression: Une erreur s'est produite. Veuillez réessayer.")),
                   );
                 }
               },

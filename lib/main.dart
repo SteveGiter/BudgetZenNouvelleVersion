@@ -1,8 +1,10 @@
-import 'dart:io';
+import 'dart:async';
 import 'package:budget_zen/appPages/Initial.dart';
 import 'package:budget_zen/appPages/Settings.dart';
 import 'package:budget_zen/appPages/SignUp.dart';
 import 'package:budget_zen/appPages/adminPages/AddUser.dart';
+import 'package:budget_zen/widgets/RechargePage.dart';
+import 'package:budget_zen/widgets/RetraitPage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
@@ -75,32 +77,74 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late Future<String> _initialRouteFuture;
+  Timer? _sessionTimer; // Timer pour la temporisation de session
+  static const int _sessionTimeoutDuration = 15 * 60; // 15 minutes en secondes
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initialRouteFuture = _getInitialRoute();
+    _startSessionTimer(); // Démarre le timer de session
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _sessionTimer?.cancel(); // Annule le timer lors de la fermeture
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS) &&
-        (state == AppLifecycleState.inactive || state == AppLifecycleState.paused)) {
-      FirebaseAuth.instance.signOut();
+    if (state == AppLifecycleState.resumed) {
+      _resetSessionTimer(); // Réinitialise le timer quand l'app revient au premier plan
+    }
+    // Ne rien faire pour inactive ou paused pour éviter une déconnexion automatique
+  }
+
+  void _startSessionTimer() {
+    _sessionTimer?.cancel();
+    _sessionTimer = Timer(Duration(seconds: _sessionTimeoutDuration), () {
+      _handleSessionTimeout();
+    });
+  }
+
+  void _resetSessionTimer() {
+    _startSessionTimer(); // Réinitialise le timer à chaque interaction
+  }
+
+  Future<void> _handleSessionTimeout() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await FirebaseAuth.instance.signOut();
       navigatorKey.currentState?.pushNamedAndRemoveUntil('/LoginPage', (Route<dynamic> route) => false);
+      _showError('Votre session a expiré. Veuillez vous reconnecter.');
     }
   }
 
   Future<String> _getInitialRoute() async {
     final user = FirebaseAuth.instance.currentUser;
     return user != null ? '/RedirectionPage' : '/WelcomePage';
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(child: Text(message)),
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.white),
+              onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+            ),
+          ],
+        ),
+        backgroundColor: AppColors.errorColor,
+        duration: const Duration(seconds: 5),
+      ),
+    );
   }
 
   @override
@@ -140,7 +184,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           themeMode: themeNotifier.isDark ? ThemeMode.dark : ThemeMode.light,
           initialRoute: snapshot.data,
           routes: {
-            //users routes
+            // Routes des utilisateurs
             '/WelcomePage': (context) => const WelcomePage(),
             '/LoginPage': (context) => const LoginPage(),
             '/SignUpPage': (context) => const SignUpPage(),
@@ -149,6 +193,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             '/HomePage': (context) => const HomePage(),
             '/HistoriqueTransactionPage': (context) => const HistoriqueTransactionPage(),
             '/money_transfer': (context) => const MoneyTransferPage(),
+            '/RetraitPage': (context) => const RetraitPage(),
+            '/RechargePage': (context) => const RechargePage(),
             '/SettingsPage': (context) => const SettingsPage(),
             '/ProfilePage': (context) => const ProfilePage(),
             '/AboutPage': (context) => AboutPage(),
@@ -156,10 +202,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             '/historique-epargne': (context) => const HistoriqueObjectifsEpargneWithBackArrow(),
             '/historique-epargne-no-back': (context) => const HistoriqueObjectifsEpargneWithoutBackArrow(),
 
-            //administrateur routes
+            // Routes de l'administrateur
             '/dashboardPage': (context) => const DashboardAdminPage(),
             '/addusersPage': (context) => const AddUsersPage(),
-            '/adminProfilPage':  (context) => const AdminProfilePage(),
+            '/adminProfilPage': (context) => const AdminProfilePage(),
           },
           onGenerateRoute: (settings) {
             switch (settings.name) {

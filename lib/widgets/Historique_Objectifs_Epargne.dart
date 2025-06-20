@@ -25,9 +25,10 @@ class _HistoriqueObjectifsEpargneState extends State<HistoriqueObjectifsEpargne>
   final DateFormat dateFormat = DateFormat('EEEE dd MMMM yyyy \'à\' HH:mm:ss', 'fr_FR');
   String _selectedFilter = 'Tout';
   final Map<String, bool> _notificationShown = {};
+  String _searchQuery = '';
 
-  // Date actuelle au format Timestamp
-  final DateTime currentDate = DateTime(2025, 6, 6, 21, 27); // 09:27 PM WAT, June 06, 2025
+  // Date actuelle mise à jour à 04:46 PM WAT, 20 juin 2025
+  final DateTime currentDate = DateTime(2025, 6, 20, 16, 46); // 04:46 PM WAT, June 20, 2025
 
   @override
   Widget build(BuildContext context) {
@@ -51,6 +52,8 @@ class _HistoriqueObjectifsEpargneState extends State<HistoriqueObjectifsEpargne>
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
+            _buildSearchBar(),
+            const SizedBox(height: 8),
             _buildFilterButtons(context),
             const SizedBox(height: 8),
             _buildObjectifsList(currentUser.uid, context),
@@ -65,6 +68,56 @@ class _HistoriqueObjectifsEpargneState extends State<HistoriqueObjectifsEpargne>
             Navigator.pushReplacementNamed(context, routes[index]);
           }
         },
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: TextField(
+        onChanged: (value) {
+          setState(() {
+            _searchQuery = value.toLowerCase();
+          });
+        },
+        decoration: InputDecoration(
+          hintText: 'Rechercher un objectif...',
+          prefixIcon: const Icon(Icons.search),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: BorderSide(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? AppColors.darkBorderColor
+                  : AppColors.borderColor,
+            ),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: BorderSide(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? AppColors.darkBorderColor
+                  : AppColors.borderColor,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: BorderSide(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? AppColors.darkPrimaryColor
+                  : AppColors.primaryColor,
+            ),
+          ),
+          filled: true,
+          fillColor: Theme.of(context).brightness == Brightness.dark
+              ? AppColors.darkCardColor
+              : AppColors.cardColor,
+        ),
+        style: TextStyle(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? AppColors.darkTextColor
+              : AppColors.textColor,
+        ),
       ),
     );
   }
@@ -170,12 +223,14 @@ class _HistoriqueObjectifsEpargneState extends State<HistoriqueObjectifsEpargne>
 
         final filteredObjectifs = snapshot.data!.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
+          final nomObjectif = (data['nomObjectif'] as String?)?.toLowerCase() ?? '';
           final montantCible = (data['montantCible'] as num).toDouble();
           final montantActuel = (data['montantActuel'] as num?)?.toDouble() ?? 0.0;
           final dateLimite = (data['dateLimite'] as Timestamp).toDate();
           final isCompleted = montantActuel >= montantCible;
           final isExpired = !isCompleted && currentDate.isAfter(dateLimite);
 
+          if (_searchQuery.isNotEmpty && !nomObjectif.contains(_searchQuery)) return false;
           if (_selectedFilter == 'En cours') return !isCompleted && !isExpired;
           if (_selectedFilter == 'Terminé') return isCompleted;
           if (_selectedFilter == 'Expiré') return isExpired;
@@ -324,6 +379,7 @@ class _HistoriqueObjectifsEpargneState extends State<HistoriqueObjectifsEpargne>
                 Row(
                   children: [
                     Expanded(
+                      flex: 2,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -346,19 +402,26 @@ class _HistoriqueObjectifsEpargneState extends State<HistoriqueObjectifsEpargne>
                         ],
                       ),
                     ),
-                    Text(
-                      '${NumberFormat.decimalPattern('fr').format(streamedMontantActuel)} / ${NumberFormat.decimalPattern('fr').format(montantCible)} FCFA',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: textColor,
+                    Expanded(
+                      flex: 1,
+                      child: Text(
+                        '${NumberFormat.decimalPattern('fr').format(streamedMontantActuel)} / ${NumberFormat.decimalPattern('fr').format(montantCible)} FCFA',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: textColor,
+                        ),
+                        textAlign: TextAlign.right,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    IconButton(
-                      icon: Icon(Icons.delete, color: AppColors.errorColor),
-                      onPressed: () {
-                        _showDeleteDialog(doc.id, context);
-                      },
+                    Flexible(
+                      child: IconButton(
+                        icon: Icon(Icons.delete, color: AppColors.errorColor),
+                        onPressed: () {
+                          _showDeleteDialog(doc.id, streamedMontantActuel >= montantCible, nomObjectif, streamedMontantActuel, context);
+                        },
+                      ),
                     ),
                   ],
                 ),
@@ -391,7 +454,8 @@ class _HistoriqueObjectifsEpargneState extends State<HistoriqueObjectifsEpargne>
                   ],
                 ),
                 const SizedBox(height: 8),
-                Row(
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Icon(Icons.calendar_today, size: 16),
                     const SizedBox(width: 8),
@@ -402,7 +466,8 @@ class _HistoriqueObjectifsEpargneState extends State<HistoriqueObjectifsEpargne>
                   ],
                 ),
                 const SizedBox(height: 4),
-                Row(
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Icon(Icons.event, size: 16),
                     const SizedBox(width: 8),
@@ -420,13 +485,13 @@ class _HistoriqueObjectifsEpargneState extends State<HistoriqueObjectifsEpargne>
     );
   }
 
-  void _showDeleteDialog(String objectifId, BuildContext context) {
+  void _showDeleteDialog(String objectifId, bool isCompleted, String nomObjectif, double montantActuel, BuildContext context) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text("Supprimer l'objectif"),
-          content: const Text("Voulez-vous vraiment supprimer cet objectif d'épargne ?"),
+          content: Text("Voulez-vous vraiment supprimer l'objectif '$nomObjectif' ?"),
           actions: [
             TextButton(
               child: const Text("Annuler"),
@@ -437,13 +502,24 @@ class _HistoriqueObjectifsEpargneState extends State<HistoriqueObjectifsEpargne>
               onPressed: () async {
                 Navigator.of(context).pop();
                 try {
+                  final userId = _auth.currentUser!.uid;
+                  await _firestoreService.updateMontantDisponible(userId, montantActuel);
                   await _firestoreService.deleteObjectifEpargne(objectifId);
                   setState(() {
                     _notificationShown.remove(objectifId);
                   });
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Objectif d'épargne supprimé")),
-                  );
+                  if (isCompleted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Objectif supprimé. Redirection vers la page de retrait...")),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text("Objectif '$nomObjectif' supprimé. ${NumberFormat.decimalPattern('fr').format(montantActuel)} FCFA restitués à votre solde."),
+                        duration: const Duration(seconds: 3),
+                      ),
+                    );
+                  }
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text("Erreur lors de la suppression: $e")),

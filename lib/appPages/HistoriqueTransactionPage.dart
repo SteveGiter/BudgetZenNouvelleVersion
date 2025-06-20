@@ -19,6 +19,10 @@ class _HistoriqueTransactionPageState extends State<HistoriqueTransactionPage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final DateFormat dateFormat = DateFormat('EEEE dd MMMM yyyy \'à\' HH:mm:ss', 'fr_FR');
   String _selectedFilter = 'Tout';
+  String _searchQuery = '';
+
+  // Date actuelle mise à jour à 04:49 PM WAT, 20 juin 2025
+  final DateTime currentDate = DateTime(2025, 6, 20, 16, 49); // 04:49 PM WAT, June 20, 2025
 
   Color _getCardColor(bool isIncome, BuildContext context) {
     final brightness = Theme.of(context).brightness;
@@ -55,13 +59,14 @@ class _HistoriqueTransactionPageState extends State<HistoriqueTransactionPage> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
+            _buildSearchBar(),
+            const SizedBox(height: 8),
             _buildFilterButtons(context),
             const SizedBox(height: 8),
             _buildTransactionList(currentUser.uid, context),
           ],
         ),
       ),
-
       bottomNavigationBar: CustomBottomNavBar(
         currentIndex: 1,
         onTabSelected: (index) {
@@ -70,6 +75,56 @@ class _HistoriqueTransactionPageState extends State<HistoriqueTransactionPage> {
             Navigator.pushReplacementNamed(context, routes[index]);
           }
         },
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: TextField(
+        onChanged: (value) {
+          setState(() {
+            _searchQuery = value.toLowerCase();
+          });
+        },
+        decoration: InputDecoration(
+          hintText: 'Rechercher une transaction...',
+          prefixIcon: const Icon(Icons.search),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: BorderSide(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? AppColors.darkBorderColor
+                  : AppColors.borderColor,
+            ),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: BorderSide(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? AppColors.darkBorderColor
+                  : AppColors.borderColor,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: BorderSide(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? AppColors.darkPrimaryColor
+                  : AppColors.primaryColor,
+            ),
+          ),
+          filled: true,
+          fillColor: Theme.of(context).brightness == Brightness.dark
+              ? AppColors.darkCardColor
+              : AppColors.cardColor,
+        ),
+        style: TextStyle(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? AppColors.darkTextColor
+              : AppColors.textColor,
+        ),
       ),
     );
   }
@@ -197,7 +252,10 @@ class _HistoriqueTransactionPageState extends State<HistoriqueTransactionPage> {
 
         final filteredTransactions = visibleTransactions.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
+          final categorie = (data['categorie'] as String?)?.toLowerCase() ?? '';
+          final montantStr = data['montant'].toString().toLowerCase();
           final isIncome = data['destinataireId'] == userId;
+          if (_searchQuery.isNotEmpty && !categorie.contains(_searchQuery) && !montantStr.contains(_searchQuery)) return false;
           if (_selectedFilter == 'Revenu') return isIncome;
           if (_selectedFilter == 'Dépense') return !isIncome;
           return true;
