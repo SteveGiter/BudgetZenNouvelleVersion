@@ -1,0 +1,90 @@
+{
+  "project_info": {
+    "project_number": "442196446312",
+    "project_id": "budget-zen-91391",
+    "storage_bucket": "budget-zen-91391.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:442196446312:android:46c9532032fd3058553fdd",
+        "android_client_info": {
+          "package_name": "com.example.budget_zen"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "442196446312-g7lhooui9o3fel6sm4f1a2vsfsp3ug95.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.budget_zen",
+            "certificate_hash": "a967211f00c9bd704177ddde20c06c8c6550b2a7"
+          }
+        },
+        {
+          "client_id": "442196446312-f2cbaip03nod5btf2111r3lf868k88mi.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC3KunSpr3aotNcvEqntCnG2YB2yUElggs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "442196446312-f2cbaip03nod5btf2111r3lf868k88mi.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "442196446312-1tjc5bhvo2inj5c1cc9lcd8mnimsjapv.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.budgetZen"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:442196446312:android:a3afc8592b29e6e9553fdd",
+        "android_client_info": {
+          "package_name": "com.example.budgetzen"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "442196446312-f2cbaip03nod5btf2111r3lf868k88mi.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC3KunSpr3aotNcvEqntCnG2YB2yUElggs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "442196446312-f2cbaip03nod5btf2111r3lf868k88mi.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "442196446312-1tjc5bhvo2inj5c1cc9lcd8mnimsjapv.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.budgetZen"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
