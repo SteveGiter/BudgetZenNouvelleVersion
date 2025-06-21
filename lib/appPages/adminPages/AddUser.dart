@@ -31,20 +31,10 @@ class _AddUsersPageState extends State<AddUsersPage> {
 
   // Liste des codes de pays avec leurs drapeaux
   static const Map<String, String> _countryCodes = {
-    '+237': 'Cameroun 🇨🇲',
-    '+242': 'Congo 🇨🇬',
-    '+241': 'Gabon 🇬🇦',
-    '+235': 'Tchad �td',
-    '+33': 'France 🇫🇷',
-    '+1': 'USA 🇺🇸',
-    '+44': 'UK 🇬🇧',
-    '+49': 'Germany 🇩🇪',
-    '+32': 'Belgium 🇧🇪',
-    '+41': 'Switzerland 🇨🇭',
-    '+212': 'Morocco 🇲🇦',
-    '+221': 'Senegal 🇸🇳',
-    '+225': 'Ivory Coast 🇨🇮',
-    '+229': 'Benin 🇧🇯',
+    '+237': '🇨🇲 Cameroun',
+    '+242': '🇨🇬 Congo',
+    '+241': '🇬🇦 Gabon',
+    '+235': '🇹🇩 Tchad',
   };
 
   // Validateur pour le nom et prénom

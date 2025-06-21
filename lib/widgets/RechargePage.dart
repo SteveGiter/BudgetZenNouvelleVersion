@@ -6,7 +6,9 @@ import '../../services/firebase/firestore.dart';
 import '../../widgets/custom_app_bar.dart';
 
 class RechargePage extends StatefulWidget {
-  const RechargePage({super.key});
+  final double montantDisponible; // Ajoutez ce paramètre
+
+  const RechargePage({super.key, required this.montantDisponible});
 
   @override
   State<RechargePage> createState() => _RechargePageState();
@@ -621,7 +623,7 @@ class _RechargePageState extends State<RechargePage> {
           return;
         }
 
-        // Vérifier l'expiration du code (simulé avec un champ codeExpiration)
+        // Vérifier l'expiration du code
         final codeExpiration = compteDoc.data()?['codeExpiration'] as Timestamp?;
         if (codeExpiration != null && codeExpiration.toDate().isBefore(DateTime.now())) {
           _showError('Code de confirmation expiré. Demandez un nouveau code.');
@@ -648,7 +650,6 @@ class _RechargePageState extends State<RechargePage> {
           transaction.update(compteRef, {
             'montantDisponible': FieldValue.increment(amount),
             'derniereMiseAJour': FieldValue.serverTimestamp(),
-            // Simuler la réinitialisation du code après utilisation
             'codeExpiration': null,
           });
 
@@ -669,8 +670,49 @@ class _RechargePageState extends State<RechargePage> {
           description: 'Recharge via ${_selectedOperator == 'orange' ? 'Orange Money' : 'MTN Mobile Money'}',
         );
 
+        // Afficher le succès et fermer la page
         _showSuccess('Recharge de ${amount.toStringAsFixed(2)} FCFA effectuée !');
-        Navigator.pop(context);
+        Navigator.pop(context, true); // Indique que la recharge a réussi
+
+        // Afficher la boîte de dialogue de gestion de l'argent
+        await showDialog(
+          context: context,
+          builder: (BuildContext dialogContext) => AlertDialog(
+            title: const Text('Plan de gestion de votre revenu'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Nous vous proposons d\'allouer votre revenu selon la règle 50/30/20 :',
+                  style: TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 10),
+                Text('• 50% pour les besoins : ${(amount * 0.50).toStringAsFixed(2)} FCFA'),
+                Text('• 30% pour les désirs : ${(amount * 0.30).toStringAsFixed(2)} FCFA'),
+                Text('• 20% pour l\'épargne : ${(amount * 0.20).toStringAsFixed(2)} FCFA'),
+                const SizedBox(height: 10),
+                const Text(
+                  'Vous pouvez ajuster ces montants dans vos objectifs financiers.',
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Fermer'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext); // Ferme la boîte de dialogue
+                  Navigator.pushNamed(dialogContext, '/SavingsGoalsPage'); // Navigue vers la page des objectifs
+                },
+                child: const Text('Définir des objectifs'),
+              ),
+            ],
+          ),
+        );
       }
     } on FirebaseException catch (e) {
       String errorMessage;
@@ -756,6 +798,100 @@ class _RechargePageState extends State<RechargePage> {
         ),
         backgroundColor: AppColors.successColor,
         duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final args = ModalRoute.of(context)!.settings.arguments as bool?;
+
+    if (args == true) {
+      // Afficher la boîte de dialogue avec un contexte spécifique
+      showDialog(
+        context: context,
+        builder: (BuildContext dialogContext) => AlertDialog(
+          title: const Text('Plan de gestion de votre revenu'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Nous vous proposons d\'allouer votre revenu selon la règle 50/30/20 :',
+                style: TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 10),
+              Text('• 50% pour les besoins : ${(widget.montantDisponible * 0.50).toStringAsFixed(2)} FCFA'),
+              Text('• 30% pour les désirs : ${(widget.montantDisponible * 0.30).toStringAsFixed(2)} FCFA'),
+              Text('• 20% pour l\'épargne : ${(widget.montantDisponible * 0.20).toStringAsFixed(2)} FCFA'),
+              const SizedBox(height: 10),
+              const Text(
+                'Vous pouvez ajuster ces montants dans vos objectifs financiers.',
+                style: TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Fermer'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(dialogContext); // Ferme la boîte de dialogue
+                Navigator.pushNamed(dialogContext, '/SavingsGoalsPage'); // Navigue vers la page des objectifs
+              },
+              child: const Text('Définir des objectifs'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+// Ajoutez cette méthode dans la classe HomePage
+  Future<void> _showMoneyManagementPlanDialog(BuildContext context, double amount) async {
+    final needs = amount * 0.50; // 50% pour les besoins
+    final wants = amount * 0.30; // 30% pour les désirs
+    final savings = amount * 0.20; // 20% pour l'épargne
+
+    await showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Plan de gestion de votre revenu'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Nous vous proposons d\'allouer votre revenu selon la règle 50/30/20 :',
+              style: TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 10),
+            Text('• 50% pour les besoins : ${needs.toStringAsFixed(2)} FCFA'),
+            Text('• 30% pour les désirs : ${wants.toStringAsFixed(2)} FCFA'),
+            Text('• 20% pour l\'épargne : ${savings.toStringAsFixed(2)} FCFA'),
+            const SizedBox(height: 10),
+            const Text(
+              'Vous pouvez ajuster ces montants dans vos objectifs financiers.',
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Fermer'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(dialogContext); // Ferme la boîte de dialogue
+              Navigator.pushNamed(dialogContext, '/SavingsGoalsPage'); // Navigue vers la page des objectifs
+            },
+            child: const Text('Définir des objectifs'),
+          ),
+        ],
       ),
     );
   }

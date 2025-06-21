@@ -1,11 +1,11 @@
 import 'package:budget_zen/services/firebase/firestore.dart';
-import 'package:budget_zen/services/firebase/auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../widgets/ForAdmin/admin_bottom_nav_bar.dart';
 import '../../widgets/custom_app_bar.dart';
+import 'EditUser.dart';
 
 class DashboardAdminPage extends StatefulWidget {
   const DashboardAdminPage({super.key});
@@ -16,13 +16,10 @@ class DashboardAdminPage extends StatefulWidget {
 
 class _DashboardAdminPageState extends State<DashboardAdminPage> {
   final FirestoreService _firestore = FirestoreService();
-  final Auth _auth = Auth();
   final DateFormat dateFormat = DateFormat('EEEE dd MMMM yyyy \'à\' HH:mm:ss', 'fr_FR');
   String _searchQuery = '';
   String _selectedFilter = 'Tout';
-
-  // Date actuelle mise à jour à 05:09 PM WAT, 20 juin 2025
-  final DateTime currentDate = DateTime(2025, 6, 20, 17, 9); // 05:09 PM WAT, June 20, 2025
+  final Set<String> _selectedUids = {};
 
   @override
   Widget build(BuildContext context) {
@@ -34,21 +31,50 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
         showBackArrow: false,
         showDarkModeButton: true,
       ),
-      backgroundColor: Colors.transparent,
       body: Column(
         children: [
+          if (_selectedUids.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: ElevatedButton(
+                onPressed: _deleteSelectedUsers,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Text('Supprimer les utilisateurs sélectionnés (${_selectedUids.length})', style: const TextStyle(color: Colors.white)),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                if (_selectedUids.isEmpty)
+                  ElevatedButton(
+                    onPressed: _selectAllUsers,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Text('Tout sélectionner', style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87)),
+                  ),
+                if (_selectedUids.isNotEmpty)
+                  ElevatedButton(
+                    onPressed: _deselectAllUsers,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Text('Tout décocher', style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87)),
+                  ),
+              ],
+            ),
+          ),
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                image: DecorationImage(
-                  image: const AssetImage('assets/Administrateur.png'),
-                  fit: BoxFit.cover,
-                  alignment: Alignment.bottomCenter,
-                  colorFilter: ColorFilter.mode(
-                    isDarkMode ? Colors.black.withOpacity(0.4) : Colors.white.withOpacity(0.2),
-                    BlendMode.darken,
-                  ),
-                ),
+                color: isDarkMode ? Colors.grey[900] : Colors.grey[100],
               ),
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
@@ -94,10 +120,11 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
         onChanged: (value) {
           setState(() {
             _searchQuery = value.toLowerCase();
+            _selectedUids.clear(); // Désélectionner tous les utilisateurs lors d'une nouvelle recherche
           });
         },
         decoration: InputDecoration(
-          hintText: 'Rechercher par nom ou email...',
+          hintText: 'Rechercher par nom, email ou date (JJ/MM/AAAA)...',
           prefixIcon: const Icon(Icons.search),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(20),
@@ -179,6 +206,7 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
       onSelected: (bool selected) {
         setState(() {
           _selectedFilter = selected ? label : 'Tout';
+          _selectedUids.clear(); // Désélectionner tous les utilisateurs lors d'un changement de filtre
         });
       },
     );
@@ -210,11 +238,45 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
           final nomPrenom = (data['nomPrenom'] as String?)?.toLowerCase() ?? '';
           final email = (data['email'] as String?)?.toLowerCase() ?? '';
           final role = (data['role'] as String?)?.toLowerCase() ?? '';
-          if (_searchQuery.isNotEmpty &&
-              !nomPrenom.contains(_searchQuery) &&
-              !email.contains(_searchQuery)) return false;
-          if (_selectedFilter != 'Tout' && role != _selectedFilter.toLowerCase()) return false;
-          return true;
+          final dateInscription = (data['dateInscription'] as Timestamp?)?.toDate();
+          final derniereConnexion = (data['derniereConnexion'] as Timestamp?)?.toDate();
+
+          // Vérification du filtre par rôle
+          if (_selectedFilter != 'Tout' && role != _selectedFilter.toLowerCase()) {
+            return false;
+          }
+
+          // Si la recherche est vide, on retourne tous les utilisateurs qui correspondent au filtre
+          if (_searchQuery.isEmpty) {
+            return true;
+          }
+
+          // Recherche par nom ou email
+          if (nomPrenom.contains(_searchQuery) || email.contains(_searchQuery)) {
+            return true;
+          }
+
+          // Recherche par date (format JJ/MM/AAAA ou JJ-MM-AAAA)
+          final datePattern = RegExp(r'^\d{2}[/-]\d{2}[/-]\d{4}$');
+          if (datePattern.hasMatch(_searchQuery)) {
+            final formattedSearchDate = _searchQuery.replaceAll('-', '/');
+
+            if (dateInscription != null) {
+              final inscriptionDateStr = DateFormat('dd/MM/yyyy').format(dateInscription);
+              if (inscriptionDateStr == formattedSearchDate) {
+                return true;
+              }
+            }
+
+            if (derniereConnexion != null) {
+              final connexionDateStr = DateFormat('dd/MM/yyyy').format(derniereConnexion);
+              if (connexionDateStr == formattedSearchDate) {
+                return true;
+              }
+            }
+          }
+
+          return false;
         }).toList();
 
         if (users.isEmpty) {
@@ -227,7 +289,6 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
           itemCount: users.length,
           itemBuilder: (context, index) {
             final userDoc = users[index];
-            final userData = userDoc.data() as Map<String, dynamic>;
             return _buildUserCard(userDoc, context);
           },
         );
@@ -248,73 +309,122 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
     final derniereConnexion = (data['derniereConnexion'] as Timestamp?)?.toDate();
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: isDarkMode ? Colors.grey[800] : Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    nomPrenom.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: isDarkMode ? Colors.white : Colors.black87,
+    return GestureDetector(
+      onTap: () {
+        if (!isCurrentUser) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => EditUserPage(uid: uid),
+            ),
+          );
+        }
+      },
+      child: MouseRegion(
+        cursor: isCurrentUser ? SystemMouseCursors.basic : SystemMouseCursors.click,
+        child: Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          color: isDarkMode ? Colors.grey[800] : Colors.white,
+          child: InkWell(
+            onTap: () {
+              if (!isCurrentUser) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => EditUserPage(uid: uid),
+                  ),
+                );
+              }
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Stack(
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        nomPrenom.toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: isDarkMode ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Email: $email',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Rôle: ${StringExtension(role).capitalize()}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      if (dateInscription != null)
+                        Text(
+                          'Inscription: ${dateFormat.format(dateInscription)}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
+                          ),
+                        ),
+                      const SizedBox(height: 4),
+                      if (derniereConnexion != null)
+                        Text(
+                          'Dernière connexion: ${dateFormat.format(derniereConnexion)}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
+                          ),
+                        ),
+                      if (!isCurrentUser)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            'Cliquez pour éditer >',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (!isCurrentUser)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Checkbox(
+                        value: _selectedUids.contains(uid),
+                        onChanged: (value) {
+                          setState(() {
+                            if (value!) {
+                              _selectedUids.add(uid);
+                            } else {
+                              _selectedUids.remove(uid);
+                            }
+                          });
+                        },
+                        activeColor: Colors.blue,
+                        checkColor: Colors.white,
+                      ),
                     ),
-                  ),
-                ),
-                if (!isCurrentUser)
-                  IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: () {
-                      _showDeleteDialog(uid, nomPrenom, context);
-                    },
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Email: $email',
-              style: TextStyle(
-                fontSize: 14,
-                color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
+                ],
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Rôle: ${role.capitalize()}',
-              style: TextStyle(
-                fontSize: 14,
-                color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
-              ),
-            ),
-            const SizedBox(height: 4),
-            if (dateInscription != null)
-              Text(
-                'Inscription: ${dateFormat.format(dateInscription)}',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
-                ),
-              ),
-            const SizedBox(height: 4),
-            if (derniereConnexion != null)
-              Text(
-                'Dernière connexion: ${dateFormat.format(derniereConnexion)}',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
-                ),
-              ),
-          ],
+          ),
         ),
       ),
     );
@@ -322,60 +432,152 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
 
   Widget _buildEmptyState(String message, BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 600; // Pour les téléphones
+
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.person_off,
-            size: 100,
-            color: isDarkMode ? Colors.grey[600] : Colors.grey[400],
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: EdgeInsets.all(isSmallScreen ? 16.0 : 24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Image.asset(
+                'assets/no-data.png',
+                width: isSmallScreen ? 120 : 150,
+                height: isSmallScreen ? 120 : 150,
+                //color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                errorBuilder: (context, error, stackTrace) => Icon(
+                  Icons.error_outline,
+                  size: isSmallScreen ? 60 : 80,
+                  color: Colors.red,
+                ),
+              ),
+              SizedBox(height: isSmallScreen ? 16 : 24),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 8.0 : 16.0),
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    fontSize: isSmallScreen ? 14 : 16,
+                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              SizedBox(height: isSmallScreen ? 16 : 24),
+              if (_searchQuery.isNotEmpty || _selectedFilter != 'Tout')
+                SizedBox(
+                  width: isSmallScreen ? double.infinity : null, // Pleine largeur sur mobile
+                  child: ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        _searchQuery = '';
+                        _selectedFilter = 'Tout';
+                      });
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isDarkMode ? Colors.blue[700] : Colors.blue,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      padding: EdgeInsets.symmetric(
+                        vertical: isSmallScreen ? 12 : 16,
+                        horizontal: isSmallScreen ? 16 : 24,
+                      ),
+                    ),
+                    child: Text(
+                      'Réinitialiser la recherche',
+                      style: TextStyle(
+                        fontSize: isSmallScreen ? 14 : 16,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            style: TextStyle(
-              fontSize: 16,
-              color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  void _showDeleteDialog(String uid, String nomPrenom, BuildContext context) {
-    showDialog(
+  Future<void> _deleteSelectedUsers() async {
+    final currentUserUid = FirebaseAuth.instance.currentUser?.uid;
+    final uidsToDelete = _selectedUids.where((uid) => uid != currentUserUid).toList();
+
+    if (uidsToDelete.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Aucun utilisateur sélectionné à supprimer ou vous ne pouvez pas supprimer votre propre compte.")),
+      );
+      return;
+    }
+
+    bool confirm = await showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text("Supprimer l'utilisateur"),
-          content: Text("Voulez-vous vraiment supprimer l'utilisateur '$nomPrenom' et toutes ses données associées ?"),
-          actions: [
-            TextButton(
-              child: const Text("Annuler"),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            TextButton(
-              child: const Text("Supprimer", style: TextStyle(color: Colors.red)),
-              onPressed: () async {
-                Navigator.of(context).pop();
-                try {
-                  await _deleteUserAndData(uid);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Utilisateur supprimé avec succès")),
-                  );
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Erreur lors de la suppression: Une erreur s'est produite. Veuillez réessayer.")),
-                  );
-                }
-              },
-            ),
-          ],
+      builder: (context) => AlertDialog(
+        title: const Text("Confirmer la suppression"),
+        content: Text("Voulez-vous vraiment supprimer ${uidsToDelete.length} utilisateur(s) et toutes leurs données associées ?"),
+        actions: [
+          TextButton(
+            child: const Text("Annuler"),
+            onPressed: () => Navigator.of(context).pop(false),
+          ),
+          TextButton(
+            child: const Text("Supprimer", style: TextStyle(color: Colors.red)),
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+        ],
+      ),
+    ) ?? false;
+
+    if (confirm) {
+      try {
+        for (String uid in uidsToDelete) {
+          await _deleteUserAndData(uid);
+        }
+        setState(() {
+          _selectedUids.clear();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("${uidsToDelete.length} utilisateur(s) supprimé(s) avec succès"),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
         );
-      },
-    );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Erreur lors de la suppression: Une erreur s'est produite. Veuillez réessayer.")),
+        );
+      }
+    }
+  }
+
+  void _selectAllUsers() {
+    final currentUserUid = FirebaseAuth.instance.currentUser?.uid;
+    final usersSnapshot = _firestore.firestore.collection('utilisateurs').snapshots();
+    usersSnapshot.listen((snapshot) {
+      final allUids = snapshot.docs
+          .where((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        final role = (data['role'] as String?)?.toLowerCase() ?? '';
+        return _selectedFilter == 'Tout' || role == _selectedFilter.toLowerCase();
+      })
+          .map((doc) => doc.id)
+          .where((uid) => uid != currentUserUid)
+          .toList();
+      setState(() {
+        _selectedUids.clear();
+        _selectedUids.addAll(allUids);
+      });
+    });
+  }
+
+  void _deselectAllUsers() {
+    setState(() {
+      _selectedUids.clear();
+    });
   }
 
   Future<void> _deleteUserAndData(String uid) async {
@@ -460,10 +662,6 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
 
       // Suppression du compte dans Firebase Authentication
       try {
-        // Note : La suppression directe via FirebaseAuth.instance.currentUser.delete()
-        // n'est pas possible ici car l'utilisateur actuel n'est pas l'utilisateur à supprimer.
-        // Une solution serait d'utiliser l'API Admin SDK, mais cela nécessite un backend.
-        // Pour l'instant, on peut signaler que cette opération nécessite des privilèges admin.
         print('Note : La suppression du compte Firebase Authentication nécessite l\'Admin SDK.');
       } catch (e) {
         print('Erreur lors de la tentative de suppression du compte Auth: $e');

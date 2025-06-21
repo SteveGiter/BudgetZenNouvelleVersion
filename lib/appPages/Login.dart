@@ -397,19 +397,19 @@ class _LoginPageState extends State<LoginPage> {
     String errorMessage;
     switch (e.code) {
       case 'invalid-email':
-        errorMessage = 'Email invalide';
+        errorMessage = 'L’adresse email n’est pas bien écrite, vérifie-la.';
         break;
       case 'user-not-found':
-        errorMessage = 'Utilisateur non trouvé';
+        errorMessage = 'Cet email n’est lié à aucun compte.';
         break;
       case 'wrong-password':
-        errorMessage = 'Mot de passe incorrect';
+        errorMessage = 'Le mot de passe ne va pas, essaie encore.';
         break;
       case 'network-request-failed':
-        errorMessage = 'Problème de connexion';
+        errorMessage = 'Pas de connexion internet, vérifie ton réseau.';
         break;
       default:
-        errorMessage = 'Erreur : ${e.code}';
+        errorMessage = 'Un souci est arrivé, réessaie plus tard.';
     }
     _showErrorSnackbar('Erreur de connexion', errorMessage);
   }

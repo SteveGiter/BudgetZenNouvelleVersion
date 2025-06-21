@@ -371,7 +371,9 @@ class _HomePageState extends State<HomePage> {
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const RechargePage()),
+                      MaterialPageRoute(
+                        builder: (context) => RechargePage(montantDisponible: montantDisponible),
+                      ),
                     );
                   },
                 ),
@@ -520,6 +522,8 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+
+
   Future<void> _addSavings(double amount, String category, String? description, String goalId) async {
     if (_currentUser == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -639,6 +643,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 }
+
 
 class _MonthDropdown extends StatelessWidget {
   final int selectedMonth;

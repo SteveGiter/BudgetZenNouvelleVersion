@@ -5,10 +5,10 @@ import 'package:flutter/material.dart';
 import '../../colors/app_colors.dart';
 import '../../services/firebase/auth.dart';
 import '../../services/firebase/firestore.dart';
+import '../../utils/logout_utils.dart';
 import '../../widgets/ForAdmin/admin_bottom_nav_bar.dart';
 import '../../widgets/custom_app_bar.dart';
 
-/// Page to display and manage the current administrator's profile.
 class AdminProfilePage extends StatefulWidget {
   const AdminProfilePage({super.key});
 
@@ -26,19 +26,18 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
-  // State variables for editable fields
+  // State variables
   bool _isEditingPassword = false;
   bool _isObscuringPassword = true;
   bool _isEditingName = false;
   bool _isEditingPhone = false;
+  bool _isProcessing = false;
+  bool _isLoading = true;
+  bool _isAdmin = false;
 
   User? _currentUser;
   String _selectedCountryCode = '+237';
-  StreamSubscription<DocumentSnapshot>? _userSubscription;
   StreamSubscription<DocumentSnapshot>? _userDataSubscription;
-  double _currentBudget = 0.0;
-  bool _isLoading = true;
-  bool _isAdmin = false;
 
   // Country codes with flags
   static const Map<String, String> _countryCodes = {
@@ -61,7 +60,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
       _checkAdminStatus();
     } else {
       setState(() => _isLoading = false);
-      _showErrorSnackBar('Aucun utilisateur connecté.');
+      _showError('Aucun utilisateur connecté.');
     }
   }
 
@@ -84,30 +83,23 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
             _isAdmin = false;
             _isLoading = false;
           });
-          _showErrorSnackBar('Accès réservé aux administrateurs.');
+          _showError('Accès réservé aux administrateurs.');
         }
       } else {
         setState(() => _isLoading = false);
-        _showErrorSnackBar('Utilisateur non trouvé.');
+        _showError('Utilisateur non trouvé.');
       }
     } catch (e) {
-      _handleError('Erreur lors de la vérification du statut admin: $e');
+      _showError('Erreur lors de la vérification du statut admin: ${e.toString()}');
       setState(() => _isLoading = false);
     }
   }
 
   /// Sets up streams to listen for user data updates.
   void _setupUserStreams() {
-    final uid = _currentUser!.uid;
-    _userSubscription = _firestoreService.firestore
-        .collection('budgets')
-        .doc(uid)
-        .snapshots()
-        .listen(_updateBudgetFromSnapshot);
-
     _userDataSubscription = _firestoreService.firestore
         .collection('utilisateurs')
-        .doc(uid)
+        .doc(_currentUser!.uid)
         .snapshots()
         .listen(_updateControllersFromSnapshot);
   }
@@ -123,29 +115,10 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
       if (userDoc.exists && mounted) {
         _updateControllersFromSnapshot(userDoc);
       }
-
-      final budgetDoc = await _firestoreService.firestore
-          .collection('budgets')
-          .doc(_currentUser!.uid)
-          .get();
-
-      if (budgetDoc.exists && mounted) {
-        _updateBudgetFromSnapshot(budgetDoc);
-      }
       setState(() => _isLoading = false);
     } catch (e) {
-      _handleError('Erreur lors du chargement des données initiales: $e');
+      _showError('Erreur lors du chargement des données initiales: ${e.toString()}');
       setState(() => _isLoading = false);
-    }
-  }
-
-  /// Updates budget state from Firestore snapshot.
-  void _updateBudgetFromSnapshot(DocumentSnapshot snapshot) {
-    final data = snapshot.data() as Map<String, dynamic>?;
-    if (mounted && data != null) {
-      setState(() {
-        _currentBudget = (data['budgetActuel'] as num?)?.toDouble() ?? 0.0;
-      });
     }
   }
 
@@ -170,29 +143,25 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
 
   /// Splits phone number into country code and number.
   Map<String, String> _splitPhoneNumber(String fullPhone) {
-    if (fullPhone.isEmpty) {
-      return {'countryCode': '+237', 'number': ''};
-    }
+    if (fullPhone.isEmpty) return {'countryCode': '+237', 'number': ''};
     final spaceIndex = fullPhone.indexOf(' ');
-    if (spaceIndex == -1) {
-      return {'countryCode': '+237', 'number': fullPhone};
-    }
-    return {
+    return spaceIndex == -1
+        ? {'countryCode': '+237', 'number': fullPhone}
+        : {
       'countryCode': fullPhone.substring(0, spaceIndex),
       'number': fullPhone.substring(spaceIndex + 1),
     };
   }
 
   /// Formats phone number with country code.
-  String _formatPhoneNumber(String countryCode, String number) {
-    return '$countryCode $number';
-  }
+  String _formatPhoneNumber(String countryCode, String number) => '$countryCode $number';
 
   /// Shows an error notification.
-  void _showErrorSnackBar(String message) {
+  void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Expanded(child: Text(message)),
             IconButton(
@@ -208,10 +177,11 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
   }
 
   /// Shows a success notification.
-  void _showSuccessSnackBar(String message) {
+  void _showSuccess(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Expanded(child: Text(message)),
             IconButton(
@@ -226,87 +196,91 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
     );
   }
 
-  /// Handles errors by logging and showing a message.
-  void _handleError(String message) {
-    debugPrint(message);
-    _showErrorSnackBar(message);
-  }
-
   /// Updates the user's name in Firestore.
   Future<void> _updateName() async {
-    if (_currentUser == null || _nameController.text.isEmpty) {
-      _showErrorSnackBar('Le nom ne peut pas être vide.');
+    if (_nameController.text.isEmpty) {
+      _showError('Le nom ne peut pas être vide');
       return;
     }
 
+    setState(() => _isProcessing = true);
     try {
       await _firestoreService.updateUser(_currentUser!.uid, {
         'nomPrenom': _nameController.text,
       });
       setState(() => _isEditingName = false);
-      _showSuccessSnackBar('Nom mis à jour avec succès.');
+      _showSuccess('Nom mis à jour avec succès');
     } catch (e) {
-      _handleError('Erreur lors de la mise à jour du nom: $e');
+      _showError('Erreur lors de la mise à jour du nom: ${e.toString()}');
+    } finally {
+      setState(() => _isProcessing = false);
     }
   }
 
   /// Updates the user's phone number in Firestore.
   Future<void> _updatePhone() async {
-    if (_currentUser == null || _phoneController.text.isEmpty) {
-      _showErrorSnackBar('Le numéro de téléphone ne peut pas être vide.');
+    final phoneNumber = _formatPhoneNumber(_selectedCountryCode, _phoneController.text.trim());
+
+    if (phoneNumber.isEmpty) {
+      _showError('Le numéro de téléphone ne peut pas être vide');
       return;
     }
 
-    final fullPhoneNumber = _formatPhoneNumber(_selectedCountryCode, _phoneController.text);
-    final isGoogleUser = _currentUser!.providerData.any((u) => u.providerId == 'google.com');
+    if (!RegExp(r'^\+[0-9]{1,3} [0-9]{8,15}$').hasMatch(phoneNumber)) {
+      _showError('Format de numéro invalide');
+      return;
+    }
 
+    setState(() => _isProcessing = true);
     try {
-      final isUnique = await _firestoreService.isPhoneNumberUnique(
-        fullPhoneNumber,
-        isGoogleUser ? 'google' : null,
+      final isUnique = await _firestoreService.isPhoneNumberUniqueForAllUsers(
+        phoneNumber,
         _currentUser!.uid,
       );
 
       if (!isUnique) {
-        _showErrorSnackBar(isGoogleUser
-            ? 'Numéro déjà utilisé par un autre compte Google.'
-            : 'Numéro déjà attribué.');
+        _showError('Ce numéro est déjà utilisé par un autre compte');
         return;
       }
 
       await _firestoreService.updateUser(_currentUser!.uid, {
-        'numeroTelephone': fullPhoneNumber,
+        'numeroTelephone': phoneNumber,
       });
       setState(() => _isEditingPhone = false);
-      _showSuccessSnackBar('Numéro de téléphone mis à jour avec succès.');
+      _showSuccess('Numéro de téléphone mis à jour avec succès');
+      await _firestoreService.createOrUpdateCompteMobile(
+        uid: _currentUser!.uid,
+        numeroTelephone: phoneNumber,
+      );
     } catch (e) {
-      _handleError('Erreur lors de la mise à jour du numéro: $e');
+      _showError('Erreur lors de la mise à jour du numéro: ${e.toString()}');
+    } finally {
+      setState(() => _isProcessing = false);
     }
   }
 
   /// Updates the user's password.
   Future<void> _updatePassword() async {
-    if (_currentUser == null) return;
-
     final isGoogleUser = _currentUser!.providerData.any((userInfo) => userInfo.providerId == 'google.com');
     if (isGoogleUser) {
-      _showErrorSnackBar('Les utilisateurs Google ne peuvent pas modifier leur mot de passe.');
+      _showError('Les utilisateurs Google ne peuvent pas modifier leur mot de passe');
       return;
     }
 
     if (_passwordController.text.isEmpty || _passwordController.text == '********') {
-      _showErrorSnackBar('Veuillez entrer un nouveau mot de passe.');
+      _showError('Veuillez entrer un nouveau mot de passe');
       return;
     }
 
     if (_passwordController.text.length < 6) {
-      _showErrorSnackBar('Le mot de passe doit contenir au moins 6 caractères.');
+      _showError('Le mot de passe doit contenir au moins 6 caractères');
       return;
     }
 
-    final currentPassword = await _showPasswordDialog('Veuillez entrer votre mot de passe actuel.');
+    final currentPassword = await _showPasswordDialog('Veuillez entrer votre mot de passe actuel');
     if (currentPassword == null || currentPassword.isEmpty) return;
 
+    setState(() => _isProcessing = true);
     try {
       final credential = EmailAuthProvider.credential(
         email: _currentUser!.email!,
@@ -321,56 +295,28 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
         _isObscuringPassword = true;
         _passwordController.text = '********';
       });
-      _showSuccessSnackBar('Mot de passe mis à jour avec succès.');
+      _showSuccess('Mot de passe mis à jour avec succès');
     } on FirebaseAuthException catch (e) {
       String errorMessage;
       switch (e.code) {
         case 'requires-recent-login':
-          errorMessage = 'Veuillez vous reconnecter pour modifier votre mot de passe.';
+          errorMessage = 'Veuillez vous reconnecter pour modifier votre mot de passe';
           break;
         case 'weak-password':
-          errorMessage = 'Le mot de passe est trop faible.';
+          errorMessage = 'Le mot de passe est trop faible';
           break;
         case 'wrong-password':
-          errorMessage = 'Mot de passe actuel incorrect.';
+          errorMessage = 'Mot de passe actuel incorrect';
           break;
         default:
           errorMessage = 'Erreur: ${e.message}';
       }
-      _showErrorSnackBar(errorMessage);
+      _showError(errorMessage);
     } catch (e) {
-      _handleError('Erreur inattendue: $e');
+      _showError('Erreur inattendue: ${e.toString()}');
+    } finally {
+      setState(() => _isProcessing = false);
     }
-  }
-
-  /// Shows a dialog to confirm logout.
-  Future<void> _showLogoutDialog() async {
-    return showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Déconnexion'),
-        content: const Text('Voulez-vous vraiment vous déconnecter ?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                await _authService.logout();
-                Navigator.pop(context);
-                Navigator.pushReplacementNamed(context, '/loginPage');
-              } catch (e) {
-                _handleError('Erreur lors de la déconnexion: $e');
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Déconnexion', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
   }
 
   /// Shows a dialog to enter the current password.
@@ -404,7 +350,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
           ElevatedButton(
             onPressed: () {
               if (controller.text.isEmpty) {
-                _showErrorSnackBar('Veuillez entrer votre mot de passe.');
+                _showError('Veuillez entrer votre mot de passe');
                 return;
               }
               Navigator.pop(context, controller.text);
@@ -452,7 +398,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _showLogoutDialog,
+                onPressed: _isProcessing ? null : () => confirmLogout(context),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
                   foregroundColor: Colors.white,
@@ -461,7 +407,16 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: const Row(
+                child: _isProcessing
+                    ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+                    : const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(Icons.logout, size: 20),
@@ -528,7 +483,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
               shape: BoxShape.circle,
             ),
             child: IconButton(
-              onPressed: () => _showErrorSnackBar('Fonctionnalité de changement de photo à venir.'),
+              onPressed: () => _showError('Fonctionnalité de changement de photo à venir'),
               icon: const Icon(Icons.camera_alt, color: Colors.blue),
             ),
           ),
@@ -594,8 +549,6 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
             _buildPhoneField(),
             const SizedBox(height: 16),
             _buildPasswordField(),
-            const SizedBox(height: 16),
-            _buildBudgetField(),
           ],
         ),
       ),
@@ -604,7 +557,6 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
 
   /// Builds the phone number field.
   Widget _buildPhoneField() {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -612,7 +564,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
           'Numéro de téléphone',
           style: TextStyle(
             fontSize: 12,
-            color: isDarkMode ? Colors.grey[400]! : Colors.grey,
+            color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade400 : Colors.grey,
           ),
         ),
         const SizedBox(height: 5),
@@ -628,7 +580,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 15),
       decoration: BoxDecoration(
         border: Border.all(
-          color: isDarkMode ? Colors.grey[700]! : AppColors.borderColor,
+          color: isDarkMode ? Colors.grey.shade700 : AppColors.borderColor,
         ),
         borderRadius: BorderRadius.circular(8),
       ),
@@ -636,7 +588,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
         children: [
           Icon(
             Icons.phone_outlined,
-            color: isDarkMode ? Colors.grey[300]! : AppColors.secondaryTextColor,
+            color: isDarkMode ? Colors.grey.shade300 : AppColors.secondaryTextColor,
           ),
           const SizedBox(width: 10),
           Text(_selectedCountryCode),
@@ -667,7 +619,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
           children: [
             Icon(
               Icons.phone_outlined,
-              color: isDarkMode ? Colors.grey[300]! : AppColors.secondaryTextColor,
+              color: isDarkMode ? Colors.grey.shade300 : AppColors.secondaryTextColor,
             ),
             const SizedBox(width: 10),
             DropdownButton<String>(
@@ -711,9 +663,18 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
             ),
             const SizedBox(width: 8),
             ElevatedButton(
-              onPressed: _updatePhone,
+              onPressed: _isProcessing ? null : _updatePhone,
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor),
-              child: const Text('Enregistrer', style: TextStyle(color: AppColors.buttonTextColor)),
+              child: _isProcessing
+                  ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+                  : const Text('Enregistrer', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -723,7 +684,6 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
 
   /// Builds the password field.
   Widget _buildPasswordField() {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final isGoogleUser = _currentUser?.providerData.any((userInfo) => userInfo.providerId == 'google.com') ?? false;
 
     return Column(
@@ -733,7 +693,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
           'Mot de passe',
           style: TextStyle(
             fontSize: 12,
-            color: isDarkMode ? Colors.grey[400]! : Colors.grey,
+            color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade400 : Colors.grey,
           ),
         ),
         const SizedBox(height: 5),
@@ -749,7 +709,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 15),
       decoration: BoxDecoration(
         border: Border.all(
-          color: isDarkMode ? Colors.grey[700]! : AppColors.borderColor,
+          color: isDarkMode ? Colors.grey.shade700 : AppColors.borderColor,
         ),
         borderRadius: BorderRadius.circular(8),
       ),
@@ -757,7 +717,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
         children: [
           Icon(
             Icons.lock_outline,
-            color: isDarkMode ? Colors.grey[300]! : AppColors.secondaryTextColor,
+            color: isDarkMode ? Colors.grey.shade300 : AppColors.secondaryTextColor,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -772,7 +732,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
             icon: const Icon(Icons.edit, size: 20),
             onPressed: () {
               if (isGoogleUser) {
-                _showErrorSnackBar('Les utilisateurs Google ne peuvent pas modifier leur mot de passe.');
+                _showError('Les utilisateurs Google ne peuvent pas modifier leur mot de passe');
               } else {
                 setState(() {
                   _isEditingPassword = true;
@@ -809,7 +769,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
           children: [
             Icon(
               Icons.lock_outline,
-              color: isDarkMode ? Colors.grey[300]! : AppColors.secondaryTextColor,
+              color: isDarkMode ? Colors.grey.shade300 : AppColors.secondaryTextColor,
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -850,56 +810,20 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
             ),
             const SizedBox(width: 8),
             ElevatedButton(
-              onPressed: _updatePassword,
+              onPressed: _isProcessing ? null : _updatePassword,
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor),
-              child: const Text('Enregistrer', style: TextStyle(color: AppColors.buttonTextColor)),
+              child: _isProcessing
+                  ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+                  : const Text('Enregistrer', style: TextStyle(color: Colors.white)),
             ),
           ],
-        ),
-      ],
-    );
-  }
-
-  /// Builds the current budget field.
-  Widget _buildBudgetField() {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Budget actuel',
-          style: TextStyle(
-            fontSize: 12,
-            color: isDarkMode ? Colors.grey[400]! : Colors.grey,
-          ),
-        ),
-        const SizedBox(height: 5),
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 15),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: isDarkMode ? Colors.grey[700]! : AppColors.borderColor,
-            ),
-            borderRadius: BorderRadius.circular(8),
-            color: isDarkMode ? Colors.grey[900] : Colors.white,
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.account_balance_wallet_outlined,
-                color: isDarkMode ? Colors.grey[300]! : AppColors.secondaryTextColor,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '${_currentBudget.toStringAsFixed(2)} FCFA',
-                  style: TextStyle(
-                    color: isDarkMode ? Colors.white : AppColors.textColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
         ),
       ],
     );
@@ -924,7 +848,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
           label,
           style: TextStyle(
             fontSize: 12,
-            color: isDarkMode ? Colors.grey[400]! : Colors.grey,
+            color: isDarkMode ? Colors.grey.shade400 : Colors.grey,
           ),
         ),
         const SizedBox(height: 5),
@@ -933,7 +857,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 15),
             decoration: BoxDecoration(
               border: Border.all(
-                color: isDarkMode ? Colors.grey[700]! : AppColors.borderColor,
+                color: isDarkMode ? Colors.grey.shade700 : AppColors.borderColor,
               ),
               borderRadius: BorderRadius.circular(8),
             ),
@@ -941,7 +865,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
               children: [
                 Icon(
                   icon,
-                  color: isDarkMode ? Colors.grey[300]! : AppColors.secondaryTextColor,
+                  color: isDarkMode ? Colors.grey.shade300 : AppColors.secondaryTextColor,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -966,7 +890,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                 children: [
                   Icon(
                     icon,
-                    color: isDarkMode ? Colors.grey[300]! : AppColors.secondaryTextColor,
+                    color: isDarkMode ? Colors.grey.shade300 : AppColors.secondaryTextColor,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -993,9 +917,18 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
                   ),
                   const SizedBox(width: 8),
                   ElevatedButton(
-                    onPressed: onSave,
+                    onPressed: _isProcessing ? null : onSave,
                     style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor),
-                    child: const Text('Enregistrer', style: TextStyle(color: AppColors.buttonTextColor)),
+                    child: _isProcessing
+                        ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                        : const Text('Enregistrer', style: TextStyle(color: Colors.white)),
                   ),
                 ],
               ),
@@ -1007,7 +940,6 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
 
   @override
   void dispose() {
-    _userSubscription?.cancel();
     _userDataSubscription?.cancel();
     _emailController.dispose();
     _nameController.dispose();

@@ -459,19 +459,19 @@ class _SignUpPageState extends State<SignUpPage> {
     String message;
     switch (e.code) {
       case 'invalid-email':
-        message = 'Email invalide';
+        message = 'L’adresse email n’est pas bien écrite, vérifie-la.';
         break;
       case 'email-already-in-use':
-        message = 'Cet email est déjà utilisé';
+        message = 'Cet email est déjà pris, essaie un autre.';
         break;
       case 'weak-password':
-        message = 'Mot de passe trop faible';
+        message = 'Le mot de passe est trop simple, il doit être plus fort.';
         break;
       case 'network-request-failed':
-        message = 'Problème de connexion';
+        message = 'Pas de connexion internet, vérifie ton réseau.';
         break;
       default:
-        message = 'Erreur: ${e.code}';
+        message = 'Un petit souci est arrivé, réessaie plus tard.';
     }
     _showErrorSnackbar('Erreur d\'inscription', message);
   }

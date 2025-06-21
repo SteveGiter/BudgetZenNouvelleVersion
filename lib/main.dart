@@ -194,7 +194,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             '/HistoriqueTransactionPage': (context) => const HistoriqueTransactionPage(),
             '/money_transfer': (context) => const MoneyTransferPage(),
             '/RetraitPage': (context) => const RetraitPage(),
-            '/RechargePage': (context) => const RechargePage(),
+            '/RechargePage': (context) => const RechargePage(montantDisponible: 0.0),
             '/SettingsPage': (context) => const SettingsPage(),
             '/ProfilePage': (context) => const ProfilePage(),
             '/AboutPage': (context) => AboutPage(),
