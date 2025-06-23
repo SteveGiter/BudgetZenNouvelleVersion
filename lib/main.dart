@@ -3,6 +3,7 @@ import 'package:budget_zen/appPages/Initial.dart';
 import 'package:budget_zen/appPages/Settings.dart';
 import 'package:budget_zen/appPages/SignUp.dart';
 import 'package:budget_zen/appPages/adminPages/AddUser.dart';
+import 'package:budget_zen/services/firebase/messaging.dart';
 import 'package:budget_zen/widgets/RechargePage.dart';
 import 'package:budget_zen/widgets/RetraitPage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -47,6 +48,9 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  // Initialiser Firebase Messaging
+  final fcmService = FirebaseMessagingService();
+  await fcmService.initialize();
 
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);

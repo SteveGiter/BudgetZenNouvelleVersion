@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../colors/app_colors.dart';
 import '../main.dart';
+import '../services/firebase/messaging.dart';
 import '../utils/logout_utils.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/custom_bottom_nav_bar.dart';
@@ -16,17 +17,27 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  bool _notificationsEnabled = true;
+  bool? _notificationsEnabled; // Nullable pour gérer l'état initial
   User? _currentUser;
   String _userName = "Non renseigné";
+  late FirebaseMessagingService _fcmService; // Instance unique
 
   @override
   void initState() {
     super.initState();
+    _fcmService = FirebaseMessagingService();
     _currentUser = FirebaseAuth.instance.currentUser;
+    _loadNotificationsStatus();
     if (_currentUser != null) {
       _loadUserData();
     }
+  }
+
+  Future<void> _loadNotificationsStatus() async {
+    final status = await _fcmService.areNotificationsEnabled(); // Utiliser la méthode persistante
+    setState(() {
+      _notificationsEnabled = status;
+    });
   }
 
   Future<void> _loadUserData() async {
@@ -42,10 +53,13 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  void _toggleNotifications(bool value) {
+  void _toggleNotifications(bool value) async {
     setState(() {
       _notificationsEnabled = value;
     });
+
+    await _fcmService.setNotificationsEnabled(value);
+
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -171,7 +185,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         Text(
                           subtitle,
                           style: TextStyle(
-                            color: Colors.grey.shade600,
+                            color: Colors.grey[600],
                             fontSize: 14,
                           ),
                         ),
@@ -200,7 +214,9 @@ class _SettingsPageState extends State<SettingsPage> {
         title: 'Paramètres',
         showDarkModeButton: true,
       ),
-      body: SingleChildScrollView(
+      body: _notificationsEnabled == null
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
@@ -323,7 +339,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     subtitle: 'Activer/désactiver les notifications',
                     onTap: null,
                     trailing: Switch(
-                      value: _notificationsEnabled,
+                      value: _notificationsEnabled!,
                       onChanged: _toggleNotifications,
                       activeColor: AppColors.primaryColor,
                     ),
@@ -347,10 +363,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     title: 'À propos',
                     subtitle: 'Version et informations légales',
                     onTap: () {
-                      Navigator.pushNamed(
-                        context,
-                        '/AboutPage',
-                      );
+                      Navigator.pushNamed(context, '/AboutPage');
                     },
                     showDivider: false,
                   ),
@@ -391,7 +404,12 @@ class _SettingsPageState extends State<SettingsPage> {
         currentIndex: 3,
         onTabSelected: (index) {
           if (index != 3) {
-            final routes = ['/HomePage', '/HistoriqueTransactionPage', '/historique-epargne-no-back', '/SettingsPage'];
+            final routes = [
+              '/HomePage',
+              '/HistoriqueTransactionPage',
+              '/historique-epargne-no-back',
+              '/SettingsPage'
+            ];
             Navigator.pushReplacementNamed(context, routes[index]);
           }
         },

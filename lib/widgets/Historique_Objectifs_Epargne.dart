@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import '../colors/app_colors.dart';
 import '../services/firebase/firestore.dart';
+import '../services/firebase/messaging.dart'; // Importez FirebaseMessagingService
 import 'custom_app_bar.dart';
 import 'custom_bottom_nav_bar.dart';
 
@@ -22,13 +23,14 @@ class HistoriqueObjectifsEpargne extends StatefulWidget {
 class _HistoriqueObjectifsEpargneState extends State<HistoriqueObjectifsEpargne> {
   final FirestoreService _firestoreService = FirestoreService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseMessagingService _messagingService = FirebaseMessagingService(); // Instancier FirebaseMessagingService
   final DateFormat dateFormat = DateFormat('EEEE dd MMMM yyyy \'à\' HH:mm:ss', 'fr_FR');
   String _selectedFilter = 'Tout';
   final Map<String, bool> _notificationShown = {};
   String _searchQuery = '';
 
-  // Date actuelle mise à jour à 04:46 PM WAT, 20 juin 2025
-  final DateTime currentDate = DateTime(2025, 6, 20, 16, 46); // 04:46 PM WAT, June 20, 2025
+  // Date actuelle mise à jour à 03:05 PM WAT, 23 juin 2025
+  final DateTime currentDate = DateTime(2025, 6, 23, 15, 5); // Mise à jour à la date actuelle
 
   @override
   Widget build(BuildContext context) {
@@ -343,12 +345,10 @@ class _HistoriqueObjectifsEpargneState extends State<HistoriqueObjectifsEpargne>
         final isExpired = !isStreamedCompleted && currentDate.isAfter(dateLimite);
 
         if (isStreamedCompleted && !_notificationShown.containsKey(objectifId)) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text("Félicitations ! L'objectif '$nomObjectif' est atteint !"),
-                duration: const Duration(seconds: 3),
-              ),
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            await _messagingService.sendLocalNotification(
+              'Objectif atteint !',
+              'Félicitations ! L\'objectif "$nomObjectif" est atteint !',
             );
             setState(() {
               _notificationShown[objectifId] = true;

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import '../../colors/app_colors.dart';
 import '../../services/firebase/firestore.dart';
+import '../../services/firebase/messaging.dart';
 import '../../widgets/custom_app_bar.dart';
 
 class RechargePage extends StatefulWidget {
-  final double montantDisponible; // Ajoutez ce paramètre
+  final double montantDisponible;
 
   const RechargePage({super.key, required this.montantDisponible});
 
@@ -22,6 +24,7 @@ class _RechargePageState extends State<RechargePage> {
   String _selectedOperator = 'orange';
   int _currentStep = 1;
   final FirestoreService _firestoreService = FirestoreService();
+  final FirebaseMessagingService _messagingService = FirebaseMessagingService();
   final User? _currentUser = FirebaseAuth.instance.currentUser;
 
   final Map<String, String> _countryCodes = {
@@ -31,7 +34,6 @@ class _RechargePageState extends State<RechargePage> {
     '+235': '🇹🇩 Tchad',
   };
 
-  // Limites pour la recharge
   static const double _minAmount = 100.0;
   static const double _maxAmount = 1000000.0;
   static const int _maxRechargeAttemptsPerHour = 5;
@@ -90,7 +92,7 @@ class _RechargePageState extends State<RechargePage> {
         showDarkModeButton: true,
       ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(screenWidth * 0.05), // 5% of screen width
+        padding: EdgeInsets.all(screenWidth * 0.05),
         child: Column(
           children: [
             _buildStepIndicator(isDarkMode, screenWidth),
@@ -540,7 +542,6 @@ class _RechargePageState extends State<RechargePage> {
 
     try {
       if (_currentStep == 1) {
-        // Étape 1 : Validation du numéro de téléphone
         if (_phoneController.text.isEmpty) {
           _showError('Veuillez entrer un numéro de téléphone.');
           return;
@@ -564,7 +565,6 @@ class _RechargePageState extends State<RechargePage> {
           return;
         }
 
-        // Vérifier l'unicité du numéro
         final isUnique = await _firestoreService.isPhoneNumberUnique(
           fullPhone,
           userDoc.data()?['provider'] ?? 'unknown',
@@ -577,7 +577,6 @@ class _RechargePageState extends State<RechargePage> {
 
         setState(() => _currentStep++);
       } else if (_currentStep == 2) {
-        // Étape 2 : Validation du montant
         final amount = double.tryParse(_amountController.text.trim());
         if (amount == null) {
           _showError('Montant invalide. Entrez un nombre valide.');
@@ -592,7 +591,6 @@ class _RechargePageState extends State<RechargePage> {
           return;
         }
 
-        // Vérifier le nombre de tentatives de recharge
         if (await _exceededRechargeAttempts()) {
           _showError('Trop de tentatives de recharge. Réessayez dans une heure.');
           return;
@@ -600,7 +598,6 @@ class _RechargePageState extends State<RechargePage> {
 
         setState(() => _currentStep++);
       } else if (_currentStep == 3) {
-        // Étape 3 : Validation du code et recharge
         final code = _codeController.text.trim();
         final amount = double.parse(_amountController.text.trim());
 
@@ -613,7 +610,6 @@ class _RechargePageState extends State<RechargePage> {
           return;
         }
 
-        // Vérifier si le compte mobile existe
         final compteDoc = await FirebaseFirestore.instance
             .collection('comptesMobiles')
             .doc(_currentUser!.uid)
@@ -623,21 +619,19 @@ class _RechargePageState extends State<RechargePage> {
           return;
         }
 
-        // Vérifier l'expiration du code
         final codeExpiration = compteDoc.data()?['codeExpiration'] as Timestamp?;
         if (codeExpiration != null && codeExpiration.toDate().isBefore(DateTime.now())) {
           _showError('Code de confirmation expiré. Demandez un nouveau code.');
           return;
         }
 
-        // Vérifier le code de sécurité
         final isCodeValid = await _firestoreService.verifyMobileCode(_currentUser!.uid, code);
         if (!isCodeValid) {
           _showError('Code de confirmation invalide.');
           return;
         }
 
-        // Effectuer la recharge dans une transaction
+        double newBalance = 0.0;
         await FirebaseFirestore.instance.runTransaction((transaction) async {
           final compteRef = FirebaseFirestore.instance
               .collection('comptesMobiles')
@@ -646,14 +640,15 @@ class _RechargePageState extends State<RechargePage> {
               .collection('recharge_attempts')
               .doc('${_currentUser!.uid}_${DateTime.now().hour}');
 
-          // Mettre à jour le compte mobile
+          final compteSnapshot = await transaction.get(compteRef);
+          newBalance = (compteSnapshot.data()?['montantDisponible'] ?? 0.0) + amount;
+
           transaction.update(compteRef, {
             'montantDisponible': FieldValue.increment(amount),
             'derniereMiseAJour': FieldValue.serverTimestamp(),
             'codeExpiration': null,
           });
 
-          // Enregistrer la tentative de recharge
           transaction.set(rechargeAttemptRef, {
             'userId': _currentUser!.uid,
             'timestamp': FieldValue.serverTimestamp(),
@@ -662,7 +657,6 @@ class _RechargePageState extends State<RechargePage> {
           });
         });
 
-        // Enregistrer le revenu
         await _firestoreService.addRevenu(
           userId: _currentUser!.uid,
           montant: amount,
@@ -670,11 +664,18 @@ class _RechargePageState extends State<RechargePage> {
           description: 'Recharge via ${_selectedOperator == 'orange' ? 'Orange Money' : 'MTN Mobile Money'}',
         );
 
-        // Afficher le succès et fermer la page
-        _showSuccess('Recharge de ${amount.toStringAsFixed(2)} FCFA effectuée !');
-        Navigator.pop(context, true); // Indique que la recharge a réussi
+        // Envoyer une notification locale
+        final fullPhone = '$_selectedCountryCode ${_phoneController.text.trim()}';
+        final operatorName = _selectedOperator == 'orange' ? 'Orange Money' : 'MTN Mobile Money';
+        final formattedDate = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
+        await _messagingService.sendLocalNotification(
+          'Recharge réussie',
+          'Montant: ${amount.toStringAsFixed(2)} FCFA\nOpérateur: $operatorName\nNuméro: $fullPhone\nDate: $formattedDate\nNouveau solde: ${newBalance.toStringAsFixed(2)} FCFA',
+        );
 
-        // Afficher la boîte de dialogue de gestion de l'argent
+        _showSuccess('Recharge de ${amount.toStringAsFixed(2)} FCFA effectuée !');
+        Navigator.pop(context, true);
+
         await showDialog(
           context: context,
           builder: (BuildContext dialogContext) => AlertDialog(
@@ -705,8 +706,8 @@ class _RechargePageState extends State<RechargePage> {
               ),
               ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(dialogContext); // Ferme la boîte de dialogue
-                  Navigator.pushNamed(dialogContext, '/SavingsGoalsPage'); // Navigue vers la page des objectifs
+                  Navigator.pop(dialogContext);
+                  Navigator.pushNamed(dialogContext, '/SavingsGoalsPage');
                 },
                 child: const Text('Définir des objectifs'),
               ),
@@ -751,7 +752,6 @@ class _RechargePageState extends State<RechargePage> {
       return true;
     }
 
-    // Incrémenter le compteur
     await FirebaseFirestore.instance
         .collection('recharge_attempts')
         .doc(hourKey)
@@ -808,7 +808,6 @@ class _RechargePageState extends State<RechargePage> {
     final args = ModalRoute.of(context)!.settings.arguments as bool?;
 
     if (args == true) {
-      // Afficher la boîte de dialogue avec un contexte spécifique
       showDialog(
         context: context,
         builder: (BuildContext dialogContext) => AlertDialog(
@@ -839,8 +838,8 @@ class _RechargePageState extends State<RechargePage> {
             ),
             ElevatedButton(
               onPressed: () {
-                Navigator.pop(dialogContext); // Ferme la boîte de dialogue
-                Navigator.pushNamed(dialogContext, '/SavingsGoalsPage'); // Navigue vers la page des objectifs
+                Navigator.pop(dialogContext);
+                Navigator.pushNamed(dialogContext, '/SavingsGoalsPage');
               },
               child: const Text('Définir des objectifs'),
             ),
@@ -848,52 +847,6 @@ class _RechargePageState extends State<RechargePage> {
         ),
       );
     }
-  }
-
-// Ajoutez cette méthode dans la classe HomePage
-  Future<void> _showMoneyManagementPlanDialog(BuildContext context, double amount) async {
-    final needs = amount * 0.50; // 50% pour les besoins
-    final wants = amount * 0.30; // 30% pour les désirs
-    final savings = amount * 0.20; // 20% pour l'épargne
-
-    await showDialog(
-      context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text('Plan de gestion de votre revenu'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Nous vous proposons d\'allouer votre revenu selon la règle 50/30/20 :',
-              style: TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 10),
-            Text('• 50% pour les besoins : ${needs.toStringAsFixed(2)} FCFA'),
-            Text('• 30% pour les désirs : ${wants.toStringAsFixed(2)} FCFA'),
-            Text('• 20% pour l\'épargne : ${savings.toStringAsFixed(2)} FCFA'),
-            const SizedBox(height: 10),
-            const Text(
-              'Vous pouvez ajuster ces montants dans vos objectifs financiers.',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Fermer'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(dialogContext); // Ferme la boîte de dialogue
-              Navigator.pushNamed(dialogContext, '/SavingsGoalsPage'); // Navigue vers la page des objectifs
-            },
-            child: const Text('Définir des objectifs'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override

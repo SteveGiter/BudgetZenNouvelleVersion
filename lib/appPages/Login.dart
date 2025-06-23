@@ -3,6 +3,7 @@ import 'package:budget_zen/services/firebase/auth.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../colors/app_colors.dart';
+import '../services/firebase/messaging.dart';
 import 'Redirection.dart';
 
 class LoginPage extends StatefulWidget {
@@ -19,6 +20,7 @@ class _LoginPageState extends State<LoginPage> {
   bool _obscurePassword = true;
   bool _isLoading = false;
   bool _isGoogleLoading = false;
+  final FirebaseMessagingService _messagingService = FirebaseMessagingService();
 
   @override
   void dispose() {
@@ -261,6 +263,10 @@ class _LoginPageState extends State<LoginPage> {
                                           _showSuccessSnackbar(isNewUser
                                               ? 'Inscription réussie avec Google !'
                                               : 'Connexion réussie avec Google !');
+                                          await _messagingService.sendLocalNotification(
+                                            'Connexion réussie',
+                                            'Bienvenue de retour avec Google !',
+                                          );
                                           await Future.delayed(const Duration(seconds: 2));
                                           Navigator.pushReplacement(
                                             context,
@@ -377,6 +383,10 @@ class _LoginPageState extends State<LoginPage> {
         );
         if (mounted) {
           _showSuccessSnackbar('Connexion réussie !');
+          await _messagingService.sendLocalNotification(
+            'Connexion réussie',
+            'Bienvenu de retour !',
+          );
           await Future.delayed(const Duration(seconds: 2));
           Navigator.pushReplacement(
             context,
