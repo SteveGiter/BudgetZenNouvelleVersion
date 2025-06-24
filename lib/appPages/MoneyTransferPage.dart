@@ -1,7 +1,11 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import '../colors/app_colors.dart';
+import '../services/firebase/messaging.dart';
 import '../widgets/custom_app_bar.dart';
 
 class MoneyTransferPage extends StatefulWidget {
@@ -20,6 +24,8 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
   String _selectedOperator = 'orange';
   bool _showCodeField = false;
   bool _isProcessing = false;
+  final FirebaseMessagingService _messagingService = FirebaseMessagingService();
+  StreamSubscription<QuerySnapshot>? _transactionSubscription;
 
   static const Color _orangePrimary = Color(0xFFFF7900);
   static const Color _orangeLight = Color(0xFFFF9E40);
@@ -50,6 +56,97 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
   Color get _primaryColor => _selectedOperator == 'orange' ? _orangePrimary : _mtnPrimary;
   Color get _primaryLight => _selectedOperator == 'orange' ? _orangeLight : _mtnLight;
   Color get _textColor => _selectedOperator == 'orange' ? Colors.white : Colors.black;
+
+  @override
+  void initState() {
+    super.initState();
+    print('Initialisation de MoneyTransferPage');
+    _setupTransactionListener();
+    // Vérifier l'état des notifications au démarrage
+    _messagingService.getNotificationsStatus().then((status) {
+      print('Statut des notifications : $status');
+    });
+  }
+
+  void _setupTransactionListener() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      print('Aucun utilisateur connecté');
+      return;
+    }
+
+    print('Configuration de l\'écouteur pour l\'utilisateur : ${user.uid}');
+    _transactionSubscription = FirebaseFirestore.instance
+        .collection('transactions')
+        .where('users', arrayContains: user.uid)
+        .orderBy('dateHeure', descending: true)
+        .limit(1)
+        .snapshots()
+        .listen((snapshot) async {
+      print('Snapshot reçu, documents : ${snapshot.docs.length}');
+      if (snapshot.docs.isEmpty) {
+        print('Aucun document trouvé dans la collection transactions');
+        return;
+      }
+
+      for (var doc in snapshot.docs) {
+        final transaction = doc.data();
+        print('Traitement de la transaction : $transaction');
+
+        try {
+          final expediteurId = transaction['expediteurId'] as String?;
+          final destinataireId = transaction['destinataireId'] as String?;
+          final montant = (transaction['montant'] as num?)?.toDouble() ?? 0.0;
+          final categorie = transaction['categorie'] as String?;
+          final description = transaction['description'] as String?;
+          final dateHeure = (transaction['dateHeure'] as Timestamp?)?.toDate() ?? DateTime.now();
+          final operator = description?.contains('Orange Money') ?? false ? 'Orange Money' : 'MTN Mobile Money';
+
+          if (expediteurId == null || destinataireId == null || categorie == null || description == null) {
+            print('Données de transaction incomplètes : $transaction');
+            continue;
+          }
+
+          String title;
+          String body;
+
+          if (!description.contains(' de ') || !description.contains(' à ')) {
+            print('Format de description invalide : $description');
+            continue;
+          }
+
+          if (user.uid == expediteurId) {
+            final recipientPhone = description.split(' à ')[1];
+            title = '💸 Transfert d\'argent réussi !';
+            body = 'Destinataire : $recipientPhone\n'
+                'Montant : ${montant.toStringAsFixed(2)} FCFA\n'
+                'Catégorie : $categorie\n'
+                'Opérateur : $operator\n'
+                'Date : ${DateFormat('dd MMMM yyyy HH:mm', 'fr_FR').format(dateHeure)}';
+          } else if (user.uid == destinataireId) {
+            final senderPhone = description.split(' de ')[1].split(' à ')[0];
+            title = '💰 Vous avez reçu un transfert !';
+            body = 'Expéditeur : $senderPhone\n'
+                'Montant : ${montant.toStringAsFixed(2)} FCFA\n'
+                'Catégorie : $categorie\n'
+                'Opérateur : $operator\n'
+                'Date : ${DateFormat('dd MMMM yyyy HH:mm', 'fr_FR').format(dateHeure)}';
+          } else {
+            print('Utilisateur non impliqué dans la transaction : $transaction');
+            continue;
+          }
+
+          print('Envoi de la notification : $title - $body');
+          await _messagingService.sendLocalNotification(title, body);
+          print('Notification envoyée avec succès pour la transaction : ${doc.id}');
+        } catch (e, stackTrace) {
+          print('Erreur lors du traitement de la transaction ${doc.id} : $e\n$stackTrace');
+        }
+      }
+    }, onError: (e, stackTrace) {
+      print('Erreur dans l\'écouteur de transactions : $e\n$stackTrace');
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -255,7 +352,7 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
                 controller: _recipientController,
                 keyboardType: TextInputType.phone,
                 decoration: InputDecoration(
-                  hintText: '6X XX XX XX',
+                  hintText: '6XX XX XX XX',
                   filled: true,
                   fillColor: isDarkMode ? Colors.grey[800] : Colors.grey[100],
                   border: OutlineInputBorder(
@@ -443,6 +540,7 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
   }
 
   Future<void> _handleTransfer() async {
+    print('Démarrage du transfert');
     if (!_showCodeField) {
       _validateAndShowCodeField();
       return;
@@ -456,6 +554,8 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
       final amount = double.tryParse(amountText.replaceAll(RegExp(r'[^0-9.]'), ''));
       final category = _selectedCategory;
       final code = _codeController.text.trim();
+
+      print('Données du transfert : recipient=$recipientPhone, montant=$amount, catégorie=$category, code=$code');
 
       // Validation des champs
       if (recipientPhone.isEmpty) {
@@ -487,7 +587,7 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
         throw 'Session expirée, veuillez vous reconnecter';
       }
 
-      // Vérifier le code (simulé ici, à remplacer par une API opérateur réelle)
+      // Vérifier le code
       final isCodeValid = await _simulateCodeVerification(code);
       if (!isCodeValid) {
         throw 'Code de confirmation invalide';
@@ -535,6 +635,7 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
       }
 
       // Effectuer la transaction
+      print('Lancement de la transaction');
       await _processTransfer(
         currentUser: currentUser,
         recipientUid: recipientUid,
@@ -547,8 +648,10 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
       _resetForm();
       _showSuccess('Transfert de ${amount.toStringAsFixed(2)} FCFA effectué avec succès !');
     } on FirebaseException catch (e) {
-      _showError('Erreur Firebase: ${e.message ?? 'Une erreur est survenue'}');
-    } catch (e) {
+      print('Erreur Firebase : $e');
+      _showError('Erreur Firebase : ${e.message ?? 'Une erreur est survenue'}');
+    } catch (e, stackTrace) {
+      print('Erreur : $e\n$stackTrace');
       _showError(e.toString());
     } finally {
       setState(() => _isProcessing = false);
@@ -563,6 +666,7 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
     required double amount,
     required String category,
   }) async {
+    print('Traitement de la transaction : expéditeur=${currentUser.uid}, destinataire=$recipientUid, montant=$amount');
     await FirebaseFirestore.instance.runTransaction((transaction) async {
       final senderRef = FirebaseFirestore.instance.collection('comptesMobiles').doc(currentUser.uid);
       final recipientRef = FirebaseFirestore.instance.collection('comptesMobiles').doc(recipientUid);
@@ -620,6 +724,7 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
         'expediteurDeleted': null,
         'destinataireDeleted': null,
       });
+      print('Transaction enregistrée dans Firestore');
     });
   }
 
@@ -629,6 +734,8 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
       final amountText = _amountController.text.trim();
       final amount = double.tryParse(amountText.replaceAll(RegExp(r'[^0-9.]'), ''));
       final category = _selectedCategory;
+
+      print('Validation : recipient=$recipientPhone, montant=$amount, catégorie=$category');
 
       if (_recipientController.text.isEmpty) {
         throw 'Veuillez entrer un numéro de téléphone';
@@ -650,17 +757,19 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
         _showCodeField = true;
       });
     } catch (e) {
+      print('Erreur de validation : $e');
       _showError(e.toString());
     }
   }
 
   Future<bool> _simulateCodeVerification(String code) async {
-    // À remplacer par une API réelle pour vérifier le code auprès de l'opérateur
-    await Future.delayed(const Duration(seconds: 1)); // Simulation de latence
+    print('Vérification du code : $code');
+    await Future.delayed(const Duration(seconds: 1));
     return RegExp(r'^\d{6}$').hasMatch(code);
   }
 
   void _resetForm() {
+    print('Réinitialisation du formulaire');
     _recipientController.clear();
     _amountController.clear();
     _codeController.clear();
@@ -671,6 +780,7 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
   }
 
   void _showError(String message) {
+    print('Affichage de l\'erreur : $message');
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -696,6 +806,7 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
   }
 
   void _showSuccess(String message) {
+    print('Affichage du succès : $message');
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -722,9 +833,11 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
 
   @override
   void dispose() {
+    print('Disposal de MoneyTransferPage');
     _recipientController.dispose();
     _amountController.dispose();
     _codeController.dispose();
+    _transactionSubscription?.cancel();
     super.dispose();
   }
 }

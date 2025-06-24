@@ -669,7 +669,7 @@ class _RechargePageState extends State<RechargePage> {
         final operatorName = _selectedOperator == 'orange' ? 'Orange Money' : 'MTN Mobile Money';
         final formattedDate = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
         await _messagingService.sendLocalNotification(
-          'Recharge réussie',
+          'Recharge effectuée avec succès',
           'Montant: ${amount.toStringAsFixed(2)} FCFA\nOpérateur: $operatorName\nNuméro: $fullPhone\nDate: $formattedDate\nNouveau solde: ${newBalance.toStringAsFixed(2)} FCFA',
         );
 

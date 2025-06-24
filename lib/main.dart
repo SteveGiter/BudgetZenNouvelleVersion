@@ -49,8 +49,8 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
   // Initialiser Firebase Messaging
-  final fcmService = FirebaseMessagingService();
-  await fcmService.initialize();
+  //final fcmService = FirebaseMessagingService();
+  //await fcmService.initialize();
 
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);

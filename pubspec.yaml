@@ -33,6 +33,7 @@ dependencies:
   material_design_icons_flutter: ^7.0.7296
   collection: ^1.15.0
   flutter_local_notifications: ^19.3.0
+  http: ^1.4.0
 
 dev_dependencies:
   flutter_test:

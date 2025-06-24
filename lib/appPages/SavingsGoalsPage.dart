@@ -1,3 +1,4 @@
+import 'package:budget_zen/services/firebase/messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +23,7 @@ class _SavingsGoalsPageState extends State<SavingsGoalsPage> {
   DateTime? _dueDate;
   String _selectedCategory = 'Prévisionnel';
   bool _isLoading = false;
+  final FirebaseMessagingService _messagingService = FirebaseMessagingService();
 
   // Limite à 50 caractères pour le nom de l'objectif
   static const int maxGoalNameLength = 50;
@@ -101,6 +103,20 @@ class _SavingsGoalsPageState extends State<SavingsGoalsPage> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
+
+      // Format the date for the notification
+      final formattedDate = DateFormat('dd MMMM yyyy', 'fr_FR').format(_dueDate!);
+      final targetAmount = double.parse(_targetAmountController.text);
+
+      // Send enriched notification
+      await _messagingService.sendLocalNotification(
+        '🎯 Nouvel objectif d\'épargne créé !',
+        'Objectif: ${_nameController.text}\n'
+            'Montant cible: ${targetAmount.toStringAsFixed(2)} FCFA\n'
+            'Catégorie: $_selectedCategory\n'
+            'Date limite: $formattedDate',
+      );
+
 
       await _firestoreService.createObjectifEpargne(
         userId: user.uid,

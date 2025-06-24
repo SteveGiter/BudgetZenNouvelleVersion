@@ -1,6 +1,8 @@
+import 'package:budget_zen/services/firebase/messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import '../../colors/app_colors.dart';
 import '../../services/firebase/firestore.dart';
 import '../../widgets/custom_app_bar.dart';
@@ -21,6 +23,7 @@ class _RetraitPageState extends State<RetraitPage> {
   int _currentStep = 1;
   final FirestoreService _firestoreService = FirestoreService();
   final User? _currentUser = FirebaseAuth.instance.currentUser;
+  final FirebaseMessagingService _messagingService = FirebaseMessagingService();
 
   final Map<String, String> _countryCodes = {
     '+237': '🇨🇲 Cameroun',
@@ -643,6 +646,8 @@ class _RetraitPageState extends State<RetraitPage> {
           _showError('Code de confirmation invalide.');
           return;
         }
+        // Déclaration de newBalance ici
+        double newBalance = 0.0;
 
         // Effectuer le retrait dans une transaction
         await FirebaseFirestore.instance.runTransaction((transaction) async {
@@ -682,6 +687,14 @@ class _RetraitPageState extends State<RetraitPage> {
           montant: amount,
           categorie: 'Retrait',
           description: 'Retrait via ${_selectedOperator == 'orange' ? 'Orange Money' : 'MTN Mobile Money'}',
+        );
+        // Envoyer une notification locale
+        final fullPhone = '$_selectedCountryCode ${_phoneController.text.trim()}';
+        final operatorName = _selectedOperator == 'orange' ? 'Orange Money' : 'MTN Mobile Money';
+        final formattedDate = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
+        await _messagingService.sendLocalNotification(
+          'Retrait effectué avec succès',
+          'Montant: ${amount.toStringAsFixed(2)} FCFA\nOpérateur: $operatorName\nNuméro: $fullPhone\nDate: $formattedDate\nNouveau solde: ${newBalance.toStringAsFixed(2)} FCFA',
         );
 
         _showSuccess('Retrait de ${amount.toStringAsFixed(2)} FCFA effectué !');

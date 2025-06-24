@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:rxdart/rxdart.dart';
 
+import 'messaging.dart';
+
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final Map<String, StreamSubscription> _activeSubscriptions = {};
@@ -58,7 +60,7 @@ class FirestoreService {
       await compteMobileDoc.set({
         'montantDisponible': 0.0,
         'numeroTelephone': numeroTelephone ?? '',
-        'code': '123456', // Code par défaut
+        'code': '123456',
         'dateCreation': FieldValue.serverTimestamp(),
       });
 
@@ -73,6 +75,10 @@ class FirestoreService {
 
       // Initialiser les statistiques
       await initializeStatistics(uid);
+
+      // Initialiser le token FCM pour le nouvel utilisateur
+      final messagingService = FirebaseMessagingService();
+      await messagingService.initialize();
     }
   }
 
@@ -284,10 +290,10 @@ class FirestoreService {
       final mois = '${now.year}-${now.month.toString().padLeft(2, '0')}';
 
       try {
-        final newDepenses = data['depenses'] as double? ?? 0.0;
-        final newRevenus = data['revenus'] as double? ?? 0.0;
-        final newEpargnes = data['epargnes'] as double? ?? 0.0;
-        final newSolde = data['soldeActuel'] as double? ?? 0.0;
+        final newDepenses = data['depenses'] ?? 0.0;
+        final newRevenus = data['revenus'] ?? 0.0;
+        final newEpargnes = data['epargnes'] ?? 0.0;
+        final newSolde = data['soldeActuel'] ?? 0.0;
 
         await statistiquesRef.set({
           'utilisateurId': utilisateurId,
@@ -525,7 +531,7 @@ class FirestoreService {
         .snapshots()
         .map((snapshot) => snapshot.docs.fold<double>(0.0, (double sum, doc) {
       final data = doc.data();
-      return sum + (data['montant'] as num?)!.toDouble() ?? 0.0;
+      return sum + (data['montant'] as num?)!.toDouble();
     }));
   }
 
@@ -534,7 +540,7 @@ class FirestoreService {
     final snapshot = await query.get();
     return snapshot.docs.fold<double>(0.0, (double sum, doc) {
       final data = doc.data();
-      return sum + (data['montant'] as num?)!.toDouble() ?? 0.0;
+      return sum + (data['montant'] as num?)!.toDouble();
     });
   }
 
@@ -545,7 +551,7 @@ class FirestoreService {
         .snapshots()
         .map((snapshot) => snapshot.docs.fold<double>(0.0, (double sum, doc) {
       final data = doc.data();
-      return sum + (data['montant'] as num?)!.toDouble() ?? 0.0;
+      return sum + (data['montant'] as num?)!.toDouble();
     }));
   }
 
