@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:budget_zen/services/firebase/messaging.dart';
 import '../../colors/app_colors.dart';
 import '../../widgets/ForAdmin/admin_bottom_nav_bar.dart';
 import '../../widgets/custom_app_bar.dart';
@@ -14,6 +15,7 @@ class AddUsersPage extends StatefulWidget {
 
 class _AddUsersPageState extends State<AddUsersPage> {
   final FirestoreService _firestore = FirestoreService();
+  final FirebaseMessagingService _messagingService = FirebaseMessagingService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final _formKey = GlobalKey<FormState>();
   final _nomPrenomController = TextEditingController();
@@ -32,7 +34,7 @@ class _AddUsersPageState extends State<AddUsersPage> {
   // Liste des codes de pays avec leurs drapeaux
   static const Map<String, String> _countryCodes = {
     '+237': '🇨🇲 Cameroun',
-    '+242': '🇨🇬 Congo',
+    '+243': '🇨🇩 Congo',
     '+241': '🇬🇦 Gabon',
     '+235': '🇹🇩 Tchad',
   };
@@ -227,7 +229,20 @@ class _AddUsersPageState extends State<AddUsersPage> {
             onPressed: () {
               if (controller.text.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Veuillez entrer votre mot de passe.')),
+                  SnackBar(
+                    content: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Expanded(child: Text('Veuillez entrer votre mot de passe.')),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+                        ),
+                      ],
+                    ),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 3),
+                  ),
                 );
                 return;
               }
@@ -251,7 +266,20 @@ class _AddUsersPageState extends State<AddUsersPage> {
         final adminUser = _auth.currentUser;
         if (adminUser == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Aucun administrateur connecté.')),
+            SnackBar(
+              content: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Expanded(child: Text('Aucun administrateur connecté.')),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
           );
           setState(() {
             _isLoading = false;
@@ -265,7 +293,20 @@ class _AddUsersPageState extends State<AddUsersPage> {
             .get();
         if (!userDoc.exists || userDoc.data()?['role'] != 'administrateur') {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Seuls les administrateurs peuvent ajouter des utilisateurs.')),
+            SnackBar(
+              content: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Expanded(child: Text('Seuls les administrateurs peuvent ajouter des utilisateurs.')),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
           );
           setState(() {
             _isLoading = false;
@@ -289,7 +330,20 @@ class _AddUsersPageState extends State<AddUsersPage> {
           final isUnique = await _firestore.isPhoneNumberUnique(fullPhoneNumber, _provider, '');
           if (!isUnique) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Ce numéro de téléphone est déjà utilisé.')),
+              SnackBar(
+                content: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Expanded(child: Text('Ce numéro de téléphone est déjà utilisé.')),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+                    ),
+                  ],
+                ),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 3),
+              ),
             );
             setState(() {
               _isLoading = false;
@@ -325,8 +379,10 @@ class _AddUsersPageState extends State<AddUsersPage> {
           password: adminPassword,
         );
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Utilisateur ajouté avec succès')),
+        // Afficher une notification pour le succès
+        await _messagingService.sendLocalNotification(
+          'Utilisateur ajouté',
+          'L\'utilisateur ${_nomPrenomController.text} a été ajouté avec succès.',
         );
 
         // Réinitialiser le formulaire
@@ -341,7 +397,20 @@ class _AddUsersPageState extends State<AddUsersPage> {
         });
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur lors de l\'ajout de l\'utilisateur : $e')),
+          SnackBar(
+            content: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(child: Text('Erreur lors de l\'ajout de l\'utilisateur : $e')),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
         );
       } finally {
         setState(() {

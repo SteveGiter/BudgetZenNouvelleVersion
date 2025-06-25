@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:budget_zen/services/firebase/messaging.dart';
 import '../../colors/app_colors.dart';
 import '../../services/firebase/firestore.dart';
 import '../../widgets/custom_app_bar.dart';
@@ -14,6 +15,7 @@ class EditUserPage extends StatefulWidget {
 
 class _EditUserPageState extends State<EditUserPage> {
   final FirestoreService _firestore = FirestoreService();
+  final FirebaseMessagingService _messagingService = FirebaseMessagingService();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
@@ -42,7 +44,20 @@ class _EditUserPageState extends State<EditUserPage> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur lors du chargement des données: $e')),
+        SnackBar(
+          content: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(child: Text('Erreur lors du chargement des données: $e')),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
       );
       setState(() => _isLoading = false);
     }
@@ -51,7 +66,20 @@ class _EditUserPageState extends State<EditUserPage> {
   Future<void> _updateUser() async {
     if (_nameController.text.isEmpty || _emailController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Le nom et l\'email sont obligatoires')),
+        SnackBar(
+          content: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Expanded(child: Text('Le nom et l\'email sont obligatoires')),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
       );
       return;
     }
@@ -64,13 +92,30 @@ class _EditUserPageState extends State<EditUserPage> {
         'numeroTelephone': _phoneController.text.isNotEmpty ? _phoneController.text : null,
         'role': _selectedRole,
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Utilisateur mis à jour avec succès')),
+
+      // Afficher une notification pour le succès
+      await _messagingService.sendLocalNotification(
+        'Utilisateur mis à jour',
+        'Les informations de l\'utilisateur ${_nameController.text} ont été mises à jour avec succès.',
       );
+
       Navigator.pop(context);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur lors de la mise à jour: $e')),
+        SnackBar(
+          content: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(child: Text('Erreur lors de la mise à jour: $e')),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
       );
     } finally {
       setState(() => _isProcessing = false);

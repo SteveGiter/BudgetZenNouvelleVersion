@@ -382,7 +382,7 @@ class _LoginPageState extends State<LoginPage> {
           _passwordController.text.trim(),
         );
         if (mounted) {
-          _showSuccessSnackbar('Connexion réussie !');
+          // Remove _showSuccessSnackbar and keep only the notification
           await _messagingService.sendLocalNotification(
             'Connexion réussie',
             'Bienvenu de retour !',

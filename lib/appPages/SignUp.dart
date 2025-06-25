@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:budget_zen/services/firebase/auth.dart';
+import 'package:budget_zen/services/firebase/messaging.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../colors/app_colors.dart';
@@ -21,6 +22,7 @@ class _SignUpPageState extends State<SignUpPage> {
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
   bool _isGoogleLoading = false;
+  final FirebaseMessagingService _messagingService = FirebaseMessagingService();
 
   @override
   void dispose() {
@@ -129,9 +131,12 @@ class _SignUpPageState extends State<SignUpPage> {
                                       try {
                                         final (userCredential, isNewUser) = await Auth().signInWithGoogle();
                                         if (userCredential != null && mounted) {
-                                          _showSuccessSnackbar(isNewUser
-                                              ? 'Inscription réussie avec Google !'
-                                              : 'Connexion réussie avec Google !');
+                                          await _messagingService.sendLocalNotification(
+                                            isNewUser ? 'Inscription réussie' : 'Connexion réussie',
+                                            isNewUser
+                                                ? 'Bienvenue avec Google !'
+                                                : 'Bienvenue de retour avec Google !',
+                                          );
                                           await Future.delayed(const Duration(seconds: 2));
                                           Navigator.pushReplacement(
                                             context,
@@ -438,7 +443,10 @@ class _SignUpPageState extends State<SignUpPage> {
           0.0,
         );
         if (mounted) {
-          _showSuccessSnackbar('Inscription réussie !');
+          await _messagingService.sendLocalNotification(
+            'Inscription réussie',
+            'Bienvenue dans votre aventure financière !',
+          );
           await Future.delayed(const Duration(seconds: 2));
           Navigator.pushReplacement(
             context,
@@ -474,19 +482,6 @@ class _SignUpPageState extends State<SignUpPage> {
         message = 'Un petit souci est arrivé, réessaie plus tard.';
     }
     _showErrorSnackbar('Erreur d\'inscription', message);
-  }
-
-  void _showSuccessSnackbar(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
   }
 
   void _showErrorSnackbar(String title, String message) {

@@ -117,7 +117,6 @@ class _SavingsGoalsPageState extends State<SavingsGoalsPage> {
             'Date limite: $formattedDate',
       );
 
-
       await _firestoreService.createObjectifEpargne(
         userId: user.uid,
         nomObjectif: _nameController.text,
@@ -125,23 +124,8 @@ class _SavingsGoalsPageState extends State<SavingsGoalsPage> {
         dateLimite: Timestamp.fromDate(_dueDate!),
         categorie: _selectedCategory,
       );
+
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Expanded(child: Text('Objectif enregistré avec succès!')),
-              IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 3),
-        ),
-      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

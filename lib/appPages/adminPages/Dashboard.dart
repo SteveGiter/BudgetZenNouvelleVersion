@@ -1,8 +1,10 @@
 import 'package:budget_zen/services/firebase/firestore.dart';
+import 'package:budget_zen/services/firebase/messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../colors/app_colors.dart';
 import '../../widgets/ForAdmin/admin_bottom_nav_bar.dart';
 import '../../widgets/custom_app_bar.dart';
 import 'EditUser.dart';
@@ -16,16 +18,38 @@ class DashboardAdminPage extends StatefulWidget {
 
 class _DashboardAdminPageState extends State<DashboardAdminPage> {
   final FirestoreService _firestore = FirestoreService();
+  final FirebaseMessagingService _messagingService = FirebaseMessagingService();
   final DateFormat dateFormat = DateFormat('EEEE dd MMMM yyyy \'à\' HH:mm:ss', 'fr_FR');
+  final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _selectedFilter = 'Tout';
   final Set<String> _selectedUids = {};
+  bool _isDeleting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.toLowerCase();
+        _selectedUids.clear(); // Désélectionner tous les utilisateurs lors d'une nouvelle recherche
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
 
     return Scaffold(
+      backgroundColor: isDarkMode ? AppColors.darkBackgroundColor : AppColors.backgroundColor,
       appBar: CustomAppBar(
         title: 'Tableau de bord Admin',
         showBackArrow: false,
@@ -37,12 +61,26 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
             Padding(
               padding: const EdgeInsets.all(16),
               child: ElevatedButton(
-                onPressed: _deleteSelectedUsers,
+                onPressed: _isDeleting ? null : _deleteSelectedUsers,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
+                  foregroundColor: AppColors.buttonTextColor,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isSmallScreen ? 16 : 24,
+                    vertical: isSmallScreen ? 12 : 16,
+                  ),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 3,
                 ),
-                child: Text('Supprimer les utilisateurs sélectionnés (${_selectedUids.length})', style: const TextStyle(color: Colors.white)),
+                child: _isDeleting
+                    ? CircularProgressIndicator(color: AppColors.buttonTextColor)
+                    : Text(
+                  'Supprimer (${_selectedUids.length})',
+                  style: TextStyle(
+                    fontSize: isSmallScreen ? 14 : 16,
+                    color: AppColors.buttonTextColor,
+                  ),
+                ),
               ),
             ),
           Padding(
@@ -54,19 +92,43 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
                   ElevatedButton(
                     onPressed: _selectAllUsers,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                      backgroundColor: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
+                      foregroundColor: isDarkMode ? AppColors.darkButtonTextColor : Colors.black, // Changé ici (optionnel)
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isSmallScreen ? 16 : 24,
+                        vertical: isSmallScreen ? 12 : 16,
+                      ),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 3,
                     ),
-                    child: Text('Tout sélectionner', style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87)),
+                    child: Text(
+                      'Tout sélectionner',
+                      style: TextStyle(
+                        fontSize: isSmallScreen ? 14 : 16,
+                        color: isDarkMode ? AppColors.darkButtonTextColor : Colors.black, // Changé ici
+                      ),
+                    ),
                   ),
                 if (_selectedUids.isNotEmpty)
                   ElevatedButton(
                     onPressed: _deselectAllUsers,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                      backgroundColor: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
+                      foregroundColor: isDarkMode ? AppColors.darkButtonTextColor : Colors.black,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isSmallScreen ? 16 : 24,
+                        vertical: isSmallScreen ? 12 : 16,
+                      ),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 3,
                     ),
-                    child: Text('Tout décocher', style: TextStyle(color: isDarkMode ? Colors.white : Colors.black87)),
+                    child: Text(
+                      'Tout décocher',
+                      style: TextStyle(
+                        fontSize: isSmallScreen ? 14 : 16,
+                        color: isDarkMode ? AppColors.darkButtonTextColor : Colors.black,
+                      ),
+                    ),
                   ),
               ],
             ),
@@ -74,10 +136,10 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: isDarkMode ? Colors.grey[900] : Colors.grey[100],
+                color: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
               ),
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -85,15 +147,15 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
                       'Liste des Utilisateurs',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: isDarkMode ? Colors.white : Colors.black87,
+                        color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
                       ),
                     ),
                     const SizedBox(height: 16),
-                    _buildSearchBar(),
-                    const SizedBox(height: 8),
-                    _buildFilterButtons(context),
-                    const SizedBox(height: 8),
-                    _buildUsersList(context),
+                    _buildSearchBar(isDarkMode, isSmallScreen),
+                    const SizedBox(height: 12),
+                    _buildFilterButtons(context, isDarkMode, isSmallScreen),
+                    const SizedBox(height: 12),
+                    _buildUsersList(context, isDarkMode, isSmallScreen),
                   ],
                 ),
               ),
@@ -113,114 +175,120 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
     );
   }
 
-  Widget _buildSearchBar() {
+  Widget _buildSearchBar(bool isDarkMode, bool isSmallScreen) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor,
+        ),
+      ),
       child: TextField(
-        onChanged: (value) {
-          setState(() {
-            _searchQuery = value.toLowerCase();
-            _selectedUids.clear(); // Désélectionner tous les utilisateurs lors d'une nouvelle recherche
-          });
-        },
+        controller: _searchController,
         decoration: InputDecoration(
           hintText: 'Rechercher par nom, email ou date (JJ/MM/AAAA)...',
-          prefixIcon: const Icon(Icons.search),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(20),
-            borderSide: BorderSide(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.grey[600]!
-                  : Colors.grey[400]!,
-            ),
+          prefixIcon: Icon(
+            Icons.search,
+            color: isDarkMode ? AppColors.darkIconColor : AppColors.iconColor,
+            size: isSmallScreen ? 20 : 24,
           ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(20),
-            borderSide: BorderSide(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.grey[600]!
-                  : Colors.grey[400]!,
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+            icon: Icon(
+              Icons.clear,
+              color: isDarkMode ? AppColors.darkIconColor : AppColors.iconColor,
+              size: isSmallScreen ? 20 : 24,
             ),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(20),
-            borderSide: BorderSide(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.white
-                  : Colors.black87,
-            ),
+            onPressed: () {
+              _searchController.clear();
+              setState(() {
+                _searchQuery = '';
+                _selectedUids.clear();
+              });
+            },
+          )
+              : null,
+          border: InputBorder.none,
+          hintStyle: TextStyle(
+            color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
+            fontSize: isSmallScreen ? 14 : 16,
           ),
           filled: true,
-          fillColor: Theme.of(context).brightness == Brightness.dark
-              ? Colors.grey[800]!
-              : Colors.grey[200]!,
+          fillColor: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
         ),
         style: TextStyle(
-          color: Theme.of(context).brightness == Brightness.dark
-              ? Colors.white
-              : Colors.black87,
+          color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
+          fontSize: isSmallScreen ? 14 : 16,
         ),
       ),
     );
   }
 
-  Widget _buildFilterButtons(BuildContext context) {
+  Widget _buildFilterButtons(BuildContext context, bool isDarkMode, bool isSmallScreen) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: Row(
-          children: ['Tout', 'Administrateur', 'Utilisateur']
-              .map((label) => Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: _buildFilterChip(label, context),
-          ))
-              .toList(),
+          children: ['Tout', 'Administrateur', 'Utilisateur'].map((label) {
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _buildFilterChip(label, context, isDarkMode, isSmallScreen),
+            );
+          }).toList(),
         ),
       ),
     );
   }
 
-  Widget _buildFilterChip(String label, BuildContext context) {
+  Widget _buildFilterChip(String label, BuildContext context, bool isDarkMode, bool isSmallScreen) {
     final isSelected = _selectedFilter == label;
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-
-    return FilterChip(
-      label: Text(label),
-      selected: isSelected,
-      selectedColor: isDarkMode ? Colors.grey[700] : Colors.grey[300],
-      checkmarkColor: isDarkMode ? Colors.white : Colors.black87,
-      labelStyle: TextStyle(
-        color: isSelected
-            ? (isDarkMode ? Colors.white : Colors.black87)
-            : (isDarkMode ? Colors.grey[400] : Colors.grey[600]),
-      ),
-      backgroundColor: isDarkMode ? Colors.grey[800] : Colors.white,
-      shape: RoundedRectangleBorder(
-        side: BorderSide(
-          color: isDarkMode ? Colors.grey[600]! : Colors.grey[400]!,
-          width: 1,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: FilterChip(
+        label: Text(
+          label,
+          style: TextStyle(
+            fontSize: isSmallScreen ? 12 : 14,
+            color: isSelected
+                ? (isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor)
+                : (isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor),
+          ),
         ),
-        borderRadius: BorderRadius.circular(20),
+        selected: isSelected,
+        selectedColor: isDarkMode ? AppColors.darkPrimaryColor : AppColors.primaryColor,
+        checkmarkColor: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
+        backgroundColor: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
+        shape: RoundedRectangleBorder(
+          side: BorderSide(
+            color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor,
+            width: 1,
+          ),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        onSelected: (bool selected) {
+          setState(() {
+            _selectedFilter = selected ? label : 'Tout';
+            _selectedUids.clear();
+          });
+        },
       ),
-      onSelected: (bool selected) {
-        setState(() {
-          _selectedFilter = selected ? label : 'Tout';
-          _selectedUids.clear(); // Désélectionner tous les utilisateurs lors d'un changement de filtre
-        });
-      },
     );
   }
 
-  Widget _buildUsersList(BuildContext context) {
+  Widget _buildUsersList(BuildContext context, bool isDarkMode, bool isSmallScreen) {
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore.firestore.collection('utilisateurs').snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Center(
             child: Text(
-              'Erreur: Une erreur s\'est produite. Veuillez réessayer.',
-              style: const TextStyle(color: Colors.red),
+              'Erreur : Une erreur s\'est produite. Veuillez réessayer.',
+              style: TextStyle(
+                color: Colors.red,
+                fontSize: isSmallScreen ? 14 : 16,
+              ),
             ),
           );
         }
@@ -230,7 +298,7 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
         }
 
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return _buildEmptyState("Aucun utilisateur trouvé", context);
+          return _buildEmptyState("Aucun utilisateur trouvé", context, isDarkMode, isSmallScreen);
         }
 
         final users = snapshot.data!.docs.where((doc) {
@@ -241,33 +309,27 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
           final dateInscription = (data['dateInscription'] as Timestamp?)?.toDate();
           final derniereConnexion = (data['derniereConnexion'] as Timestamp?)?.toDate();
 
-          // Vérification du filtre par rôle
           if (_selectedFilter != 'Tout' && role != _selectedFilter.toLowerCase()) {
             return false;
           }
 
-          // Si la recherche est vide, on retourne tous les utilisateurs qui correspondent au filtre
           if (_searchQuery.isEmpty) {
             return true;
           }
 
-          // Recherche par nom ou email
           if (nomPrenom.contains(_searchQuery) || email.contains(_searchQuery)) {
             return true;
           }
 
-          // Recherche par date (format JJ/MM/AAAA ou JJ-MM-AAAA)
           final datePattern = RegExp(r'^\d{2}[/-]\d{2}[/-]\d{4}$');
           if (datePattern.hasMatch(_searchQuery)) {
             final formattedSearchDate = _searchQuery.replaceAll('-', '/');
-
             if (dateInscription != null) {
               final inscriptionDateStr = DateFormat('dd/MM/yyyy').format(dateInscription);
               if (inscriptionDateStr == formattedSearchDate) {
                 return true;
               }
             }
-
             if (derniereConnexion != null) {
               final connexionDateStr = DateFormat('dd/MM/yyyy').format(derniereConnexion);
               if (connexionDateStr == formattedSearchDate) {
@@ -280,7 +342,7 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
         }).toList();
 
         if (users.isEmpty) {
-          return _buildEmptyState("Aucun utilisateur trouvé pour cette recherche ou filtre", context);
+          return _buildEmptyState("Aucun utilisateur trouvé pour cette recherche ou filtre", context, isDarkMode, isSmallScreen);
         }
 
         return ListView.builder(
@@ -289,14 +351,14 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
           itemCount: users.length,
           itemBuilder: (context, index) {
             final userDoc = users[index];
-            return _buildUserCard(userDoc, context);
+            return _buildUserCard(userDoc, context, isDarkMode, isSmallScreen);
           },
         );
       },
     );
   }
 
-  Widget _buildUserCard(QueryDocumentSnapshot doc, BuildContext context) {
+  Widget _buildUserCard(QueryDocumentSnapshot doc, BuildContext context, bool isDarkMode, bool isSmallScreen) {
     final data = doc.data() as Map<String, dynamic>;
     final uid = doc.id;
     final currentUserUid = FirebaseAuth.instance.currentUser?.uid;
@@ -307,122 +369,110 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
     final role = data['role'] as String? ?? 'utilisateur';
     final dateInscription = (data['dateInscription'] as Timestamp?)?.toDate();
     final derniereConnexion = (data['derniereConnexion'] as Timestamp?)?.toDate();
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-    return GestureDetector(
-      onTap: () {
-        if (!isCurrentUser) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => EditUserPage(uid: uid),
-            ),
-          );
-        }
-      },
-      child: MouseRegion(
-        cursor: isCurrentUser ? SystemMouseCursors.basic : SystemMouseCursors.click,
-        child: Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          color: isDarkMode ? Colors.grey[800] : Colors.white,
-          child: InkWell(
-            onTap: () {
-              if (!isCurrentUser) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => EditUserPage(uid: uid),
-                  ),
-                );
-              }
-            },
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Stack(
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        nomPrenom.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: isDarkMode ? Colors.white : Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Email: $email',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Rôle: ${StringExtension(role).capitalize()}',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      if (dateInscription != null)
-                        Text(
-                          'Inscription: ${dateFormat.format(dateInscription)}',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
-                          ),
-                        ),
-                      const SizedBox(height: 4),
-                      if (derniereConnexion != null)
-                        Text(
-                          'Dernière connexion: ${dateFormat.format(derniereConnexion)}',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
-                          ),
-                        ),
-                      if (!isCurrentUser)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
+    return MouseRegion(
+      cursor: isCurrentUser ? SystemMouseCursors.basic : SystemMouseCursors.click,
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        elevation: 4,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        color: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
+        child: InkWell(
+          onTap: isCurrentUser
+              ? null
+              : () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => EditUserPage(uid: uid),
+              ),
+            );
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+            child: Stack(
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
                           child: Text(
-                            'Cliquez pour éditer >',
+                            nomPrenom.toUpperCase(),
                             style: TextStyle(
-                              fontSize: 12,
-                              color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                              fontStyle: FontStyle.italic,
+                              fontSize: isSmallScreen ? 14 : 16,
+                              fontWeight: FontWeight.bold,
+                              color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
                             ),
                           ),
                         ),
-                    ],
-                  ),
-                  if (!isCurrentUser)
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Checkbox(
-                        value: _selectedUids.contains(uid),
-                        onChanged: (value) {
-                          setState(() {
-                            if (value!) {
-                              _selectedUids.add(uid);
-                            } else {
-                              _selectedUids.remove(uid);
-                            }
-                          });
-                        },
-                        activeColor: Colors.blue,
-                        checkColor: Colors.white,
+                        if (!isCurrentUser)
+                          Icon(
+                            Icons.edit,
+                            size: isSmallScreen ? 18 : 20,
+                            color: isDarkMode ? AppColors.darkIconColor : AppColors.iconColor,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Email: $email',
+                      style: TextStyle(
+                        fontSize: isSmallScreen ? 12 : 14,
+                        color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
                       ),
                     ),
-                ],
-              ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Rôle: ${StringExtension(role).capitalize()}',
+                      style: TextStyle(
+                        fontSize: isSmallScreen ? 12 : 14,
+                        color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    if (dateInscription != null)
+                      Text(
+                        'Inscription: ${dateFormat.format(dateInscription)}',
+                        style: TextStyle(
+                          fontSize: isSmallScreen ? 12 : 14,
+                          color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
+                        ),
+                      ),
+                    const SizedBox(height: 4),
+                    if (derniereConnexion != null)
+                      Text(
+                        'Dernière connexion: ${dateFormat.format(derniereConnexion)}',
+                        style: TextStyle(
+                          fontSize: isSmallScreen ? 12 : 14,
+                          color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
+                        ),
+                      ),
+                  ],
+                ),
+                if (!isCurrentUser)
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: Checkbox(
+                      value: _selectedUids.contains(uid),
+                      onChanged: (value) {
+                        setState(() {
+                          if (value!) {
+                            _selectedUids.add(uid);
+                          } else {
+                            _selectedUids.remove(uid);
+                          }
+                        });
+                      },
+                      activeColor: isDarkMode ? AppColors.darkPrimaryColor : AppColors.primaryColor,
+                      checkColor: AppColors.buttonTextColor,
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -430,54 +480,45 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
     );
   }
 
-  Widget _buildEmptyState(String message, BuildContext context) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isSmallScreen = screenWidth < 600; // Pour les téléphones
-
+  Widget _buildEmptyState(String message, BuildContext context, bool isDarkMode, bool isSmallScreen) {
     return Center(
       child: SingleChildScrollView(
         child: Padding(
-          padding: EdgeInsets.all(isSmallScreen ? 16.0 : 24.0),
+          padding: EdgeInsets.all(isSmallScreen ? 16 : 24),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Image.asset(
-                'assets/no-data.png',
-                width: isSmallScreen ? 120 : 150,
-                height: isSmallScreen ? 120 : 150,
-                //color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                errorBuilder: (context, error, stackTrace) => Icon(
-                  Icons.error_outline,
-                  size: isSmallScreen ? 60 : 80,
-                  color: Colors.red,
-                ),
+              Icon(
+                Icons.person_off,
+                size: isSmallScreen ? 60 : 80,
+                color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
               ),
               SizedBox(height: isSmallScreen ? 16 : 24),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 8.0 : 16.0),
-                child: Text(
-                  message,
-                  style: TextStyle(
-                    fontSize: isSmallScreen ? 14 : 16,
-                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                  ),
-                  textAlign: TextAlign.center,
+              Text(
+                message,
+                style: TextStyle(
+                  fontSize: isSmallScreen ? 14 : 16,
+                  color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
+                  fontWeight: FontWeight.w500,
                 ),
+                textAlign: TextAlign.center,
               ),
               SizedBox(height: isSmallScreen ? 16 : 24),
               if (_searchQuery.isNotEmpty || _selectedFilter != 'Tout')
                 SizedBox(
-                  width: isSmallScreen ? double.infinity : null, // Pleine largeur sur mobile
+                  width: isSmallScreen ? double.infinity : 200,
                   child: ElevatedButton(
                     onPressed: () {
                       setState(() {
+                        _searchController.clear();
                         _searchQuery = '';
                         _selectedFilter = 'Tout';
+                        _selectedUids.clear();
                       });
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: isDarkMode ? Colors.blue[700] : Colors.blue,
+                      backgroundColor: isDarkMode ? AppColors.darkButtonColor : AppColors.buttonColor,
+                      foregroundColor: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(20),
                       ),
@@ -485,16 +526,45 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
                         vertical: isSmallScreen ? 12 : 16,
                         horizontal: isSmallScreen ? 16 : 24,
                       ),
+                      elevation: 3,
                     ),
                     child: Text(
                       'Réinitialiser la recherche',
                       style: TextStyle(
                         fontSize: isSmallScreen ? 14 : 16,
-                        color: Colors.white,
+                        color: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
                       ),
                     ),
                   ),
                 ),
+              SizedBox(height: isSmallScreen ? 8 : 12),
+              SizedBox(
+                width: isSmallScreen ? double.infinity : 200,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/addusersPage');
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isDarkMode ? AppColors.darkButtonColor : AppColors.buttonColor,
+                    foregroundColor: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    padding: EdgeInsets.symmetric(
+                      vertical: isSmallScreen ? 12 : 16,
+                      horizontal: isSmallScreen ? 16 : 24,
+                    ),
+                    elevation: 3,
+                  ),
+                  child: Text(
+                    'Ajouter un utilisateur',
+                    style: TextStyle(
+                      fontSize: isSmallScreen ? 14 : 16,
+                      color: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -508,7 +578,22 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
 
     if (uidsToDelete.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Aucun utilisateur sélectionné à supprimer ou vous ne pouvez pas supprimer votre propre compte.")),
+        SnackBar(
+          content: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Expanded(
+                child: Text("Aucun utilisateur sélectionné ou vous ne pouvez pas supprimer votre propre compte."),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
       );
       return;
     }
@@ -532,45 +617,60 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
     ) ?? false;
 
     if (confirm) {
+      setState(() {
+        _isDeleting = true;
+      });
       try {
         for (String uid in uidsToDelete) {
           await _deleteUserAndData(uid);
         }
+        await _messagingService.sendLocalNotification(
+          'Utilisateurs supprimés',
+          '${uidsToDelete.length} utilisateur(s) supprimé(s) avec succès.',
+        );
         setState(() {
           _selectedUids.clear();
         });
+      } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("${uidsToDelete.length} utilisateur(s) supprimé(s) avec succès"),
-            backgroundColor: Colors.green,
+            content: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(child: Text("Erreur lors de la suppression : $e")),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
           ),
         );
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Erreur lors de la suppression: Une erreur s'est produite. Veuillez réessayer.")),
-        );
+      } finally {
+        setState(() {
+          _isDeleting = false;
+        });
       }
     }
   }
 
-  void _selectAllUsers() {
+  Future<void> _selectAllUsers() async {
     final currentUserUid = FirebaseAuth.instance.currentUser?.uid;
-    final usersSnapshot = _firestore.firestore.collection('utilisateurs').snapshots();
-    usersSnapshot.listen((snapshot) {
-      final allUids = snapshot.docs
-          .where((doc) {
-        final data = doc.data() as Map<String, dynamic>;
-        final role = (data['role'] as String?)?.toLowerCase() ?? '';
-        return _selectedFilter == 'Tout' || role == _selectedFilter.toLowerCase();
-      })
-          .map((doc) => doc.id)
-          .where((uid) => uid != currentUserUid)
-          .toList();
-      setState(() {
-        _selectedUids.clear();
-        _selectedUids.addAll(allUids);
-      });
+    final snapshot = await _firestore.firestore.collection('utilisateurs').get();
+    final allUids = snapshot.docs
+        .where((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      final role = (data['role'] as String?)?.toLowerCase() ?? '';
+      return _selectedFilter == 'Tout' || role == _selectedFilter.toLowerCase();
+    })
+        .map((doc) => doc.id)
+        .where((uid) => uid != currentUserUid)
+        .toList();
+    setState(() {
+      _selectedUids.clear();
+      _selectedUids.addAll(allUids);
     });
   }
 
