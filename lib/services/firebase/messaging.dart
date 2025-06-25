@@ -1,9 +1,11 @@
+import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 class FirebaseMessagingService {
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
@@ -20,7 +22,9 @@ class FirebaseMessagingService {
   }
 
   Future<void> setNotificationsPreference(bool isEnabled) async {
-    print('Mise à jour de la préférence de notification : $isEnabled');
+    if (kDebugMode) {
+      print('Mise à jour de la préférence de notification : $isEnabled');
+    }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_notificationsEnabledKey, isEnabled);
   }
@@ -45,10 +49,16 @@ class FirebaseMessagingService {
 
     try {
       String? token;
-      if (kIsWeb) {
-        token = await _messaging.getToken();
-        print('FCM Token (web) : $token');
-      } else {
+      if (!kIsWeb) {
+        // Demander la permission POST_NOTIFICATIONS pour Android 13+
+        if (Platform.isAndroid) {
+          final status = await Permission.notification.request();
+          if (status.isDenied) {
+            print('Permission de notification refusée');
+            return;
+          }
+        }
+
         final settings = await _messaging.requestPermission(
           alert: true,
           badge: true,
@@ -63,9 +73,12 @@ class FirebaseMessagingService {
           print('Permissions de notification refusées');
           return;
         }
+      } else {
+        token = await _messaging.getToken();
+        print('FCM Token (web) : $token');
       }
 
-      // Enregistrer le token FCM dans Firestore pour l'utilisateur actuel
+      // Enregistrer le token FCM dans Firestore
       final user = FirebaseAuth.instance.currentUser;
       if (user != null && token != null) {
         await FirebaseFirestore.instance.collection('utilisateurs').doc(user.uid).update({
@@ -85,10 +98,12 @@ class FirebaseMessagingService {
           iOS: iosSettings,
         );
         await _localNotificationsPlugin.initialize(initializationSettings);
-        print('Notifications locales initialisées');
+        print
+
+          ('Notifications locales initialisées');
       }
 
-      await _messaging.subscribeToTopic('all_users');
+      await _messaging.subscribeToTopic('all Ames');
       print('Abonnement au topic all_users');
       FirebaseMessaging.onBackgroundMessage(_handleBackgroundMessage);
       FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
@@ -200,6 +215,52 @@ class FirebaseMessagingService {
 
   static Future<void> _handleBackgroundMessage(RemoteMessage message) async {
     print('Notification en arrière-plan : ${message.notification?.title} - ${message.notification?.body}');
+
+    // Initialiser flutter_local_notifications pour l'arrière-plan
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const iosSettings = DarwinInitializationSettings();
+    const initializationSettings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
+    final localNotificationsPlugin = FlutterLocalNotificationsPlugin();
+    await localNotificationsPlugin.initialize(initializationSettings);
+
+    // Afficher la notification
+    if (message.notification != null) {
+      const androidDetails = AndroidNotificationDetails(
+        'transfer_channel',
+        'Transfer Notifications',
+        channelDescription: 'Notifications for money transfers',
+        importance: Importance.max,
+        priority: Priority.high,
+        showWhen: true,
+        groupKey: 'com.example.budget_zen.notifications',
+        styleInformation: BigTextStyleInformation(''),
+        ticker: 'Transfert effectué',
+        playSound: true,
+      );
+
+      const iosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      );
+
+      const platformDetails = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      );
+
+      final notificationId = DateTime.now().millisecondsSinceEpoch % 1000000;
+      await localNotificationsPlugin.show(
+        notificationId,
+        message.notification!.title ?? 'Notification',
+        message.notification!.body ?? 'Nouveau message reçu',
+        platformDetails,
+      );
+      print('Notification locale affichée en arrière-plan');
+    }
   }
 
   void _handleForegroundMessage(RemoteMessage message) {

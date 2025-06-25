@@ -3,6 +3,7 @@ import 'package:budget_zen/appPages/Initial.dart';
 import 'package:budget_zen/appPages/Settings.dart';
 import 'package:budget_zen/appPages/SignUp.dart';
 import 'package:budget_zen/appPages/adminPages/AddUser.dart';
+import 'package:budget_zen/services/firebase/TransactionNotificationService.dart';
 import 'package:budget_zen/services/firebase/messaging.dart';
 import 'package:budget_zen/widgets/RechargePage.dart';
 import 'package:budget_zen/widgets/RetraitPage.dart';
@@ -48,9 +49,14 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
   // Initialiser Firebase Messaging
-  //final fcmService = FirebaseMessagingService();
-  //await fcmService.initialize();
+  final fcmService = FirebaseMessagingService();
+  await fcmService.initialize();
+
+  // Initialiser TransactionNotificationService
+  final transactionNotificationService = TransactionNotificationService();
+  await transactionNotificationService.initialize();
 
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
@@ -102,9 +108,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _resetSessionTimer(); // Réinitialise le timer quand l'app revient au premier plan
+      _resetSessionTimer(); // Réinitialise le timer de session
+      // Vérifier l'état des notifications
+      FirebaseMessagingService().getNotificationsStatus().then((enabled) {
+        if (!enabled) {
+          print('Notifications désactivées, demander à nouveau si nécessaire');
+        }
+      });
     }
-    // Ne rien faire pour inactive ou paused pour éviter une déconnexion automatique
   }
 
   void _startSessionTimer() {
