@@ -20,7 +20,7 @@ class FirebaseMessagingService {
     print('Notifications activées dans SharedPreferences : $enabled');
     return enabled;
   }
-
+  
   Future<void> setNotificationsPreference(bool isEnabled) async {
     if (kDebugMode) {
       print('Mise à jour de la préférence de notification : $isEnabled');
