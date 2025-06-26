@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../colors/app_colors.dart';
 import '../../services/firebase/auth.dart';
 import '../../services/firebase/firestore.dart';
+import '../../services/firebase/messaging.dart';
 import '../../utils/logout_utils.dart';
 import '../../widgets/ForAdmin/admin_bottom_nav_bar.dart';
 import '../../widgets/custom_app_bar.dart';
@@ -19,6 +20,7 @@ class AdminProfilePage extends StatefulWidget {
 class _AdminProfilePageState extends State<AdminProfilePage> {
   final Auth _authService = Auth();
   final FirestoreService _firestoreService = FirestoreService();
+  final FirebaseMessagingService _messagingService = FirebaseMessagingService();
 
   // Controllers for input fields
   final TextEditingController _emailController = TextEditingController();
@@ -158,42 +160,12 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
 
   /// Shows an error notification.
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(child: Text(message)),
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-            ),
-          ],
-        ),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 5),
-      ),
-    );
+    _messagingService.sendLocalNotification('Erreur', message);
   }
 
   /// Shows a success notification.
   void _showSuccess(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(child: Text(message)),
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-            ),
-          ],
-        ),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    _messagingService.sendLocalNotification('Succès', message);
   }
 
   /// Updates the user's name in Firestore.

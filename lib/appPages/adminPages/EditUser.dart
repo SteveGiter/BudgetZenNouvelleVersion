@@ -92,6 +92,12 @@ class _EditUserPageState extends State<EditUserPage> {
         'numeroTelephone': _phoneController.text.isNotEmpty ? _phoneController.text : null,
         'role': _selectedRole,
       });
+      if (_selectedRole != 'administrateur' && _phoneController.text.isNotEmpty) {
+        await _firestore.createOrUpdateCompteMobile(
+          uid: widget.uid,
+          numeroTelephone: _phoneController.text,
+        );
+      }
 
       // Afficher une notification pour le succès
       await _messagingService.sendLocalNotification(
@@ -101,21 +107,9 @@ class _EditUserPageState extends State<EditUserPage> {
 
       Navigator.pop(context);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(child: Text('Erreur lors de la mise à jour: $e')),
-              IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
+      await _messagingService.sendLocalNotification(
+        'Erreur',
+        'Erreur lors de la mise à jour: $e',
       );
     } finally {
       setState(() => _isProcessing = false);

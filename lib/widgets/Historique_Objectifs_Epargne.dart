@@ -295,6 +295,7 @@ class _HistoriqueObjectifsEpargneState extends State<HistoriqueObjectifsEpargne>
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
+              const SizedBox(height: 8),
               Tooltip(
                 message: 'Aucun objectif disponible',
                 child: Image.asset(
@@ -304,7 +305,7 @@ class _HistoriqueObjectifsEpargneState extends State<HistoriqueObjectifsEpargne>
                   fit: BoxFit.contain,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
               Text(
                 message,
                 style: TextStyle(fontSize: 16, color: color),
@@ -504,25 +505,20 @@ class _HistoriqueObjectifsEpargneState extends State<HistoriqueObjectifsEpargne>
                 try {
                   final userId = _auth.currentUser!.uid;
                   await _firestoreService.updateMontantDisponible(userId, montantActuel);
-                  await _firestoreService.deleteObjectifEpargne(objectifId);
+                  await _firestoreService.deleteObjectifEpargne(objectifId, nomObjectif: nomObjectif);
                   setState(() {
                     _notificationShown.remove(objectifId);
                   });
-                  if (isCompleted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Objectif supprimé. Redirection vers la page de retrait...")),
-                    );
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text("Objectif '$nomObjectif' supprimé. ${NumberFormat.decimalPattern('fr').format(montantActuel)} FCFA restitués à votre solde."),
-                        duration: const Duration(seconds: 3),
-                      ),
-                    );
-                  }
+                  await _messagingService.sendLocalNotification(
+                    'Objectif supprimé',
+                    isCompleted
+                      ? "Objectif supprimé. Redirection vers la page de retrait..."
+                      : "Objectif '$nomObjectif' supprimé. ${NumberFormat.decimalPattern('fr').format(montantActuel)} FCFA restitués à votre solde.",
+                  );
                 } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Erreur lors de la suppression: $e")),
+                  await _messagingService.sendLocalNotification(
+                    'Erreur',
+                    "Erreur lors de la suppression: $e",
                   );
                 }
               },

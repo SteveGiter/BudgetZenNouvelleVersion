@@ -632,21 +632,9 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
           _selectedUids.clear();
         });
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(child: Text("Erreur lors de la suppression : $e")),
-                IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
+        await _messagingService.sendLocalNotification(
+          'Erreur',
+          'Erreur lors de la suppression : $e',
         );
       } finally {
         setState(() {

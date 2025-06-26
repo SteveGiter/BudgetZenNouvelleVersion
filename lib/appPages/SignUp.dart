@@ -467,7 +467,7 @@ class _SignUpPageState extends State<SignUpPage> {
     String message;
     switch (e.code) {
       case 'invalid-email':
-        message = 'L’adresse email n’est pas bien écrite, vérifie-la.';
+        message = "L'adresse email n'est pas bien écrite, vérifie-la.";
         break;
       case 'email-already-in-use':
         message = 'Cet email est déjà pris, essaie un autre.';
@@ -486,14 +486,6 @@ class _SignUpPageState extends State<SignUpPage> {
 
   void _showErrorSnackbar(String title, String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$title: $message'),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 3),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
+    _messagingService.sendLocalNotification(title, message);
   }
 }

@@ -1,4 +1,3 @@
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -125,7 +124,12 @@ class _EpargnesChartState extends State<EpargnesChart> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.show_chart, color: colors.onSurface.withOpacity(0.5), size: 40),
+                          Image.asset(
+                            'assets/no-data.png',
+                            width: 80,
+                            height: 80,
+                            fit: BoxFit.contain,
+                          ),
                           const SizedBox(height: 8),
                           Text(
                             'Aucune épargne ce mois-ci',

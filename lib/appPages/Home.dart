@@ -2,8 +2,10 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../colors/app_colors.dart';
 import '../services/firebase/firestore.dart';
+import '../services/firebase/messaging.dart';
 import '../widgets/EpargnesChart.dart';
 import '../widgets/ForHomePage/AddSavingDialog.dart';
 import '../widgets/ForHomePage/BudgetValidator.dart';
@@ -66,11 +68,84 @@ class _HomePageState extends State<HomePage> {
   StreamSubscription<double>? _epargnesSubscription;
   final FirestoreService _firestoreService = FirestoreService();
   final User? _currentUser = FirebaseAuth.instance.currentUser;
+  final FirebaseMessagingService _messagingService = FirebaseMessagingService();
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map && args.containsKey('rechargeAmount') && args.containsKey('rechargeTimestamp')) {
+      final double rechargeAmount = args['rechargeAmount'] as double;
+      final String rechargeTimestamp = args['rechargeTimestamp'] as String;
+      _checkAndShowSavingsPlanDialog(context, rechargeAmount, rechargeTimestamp);
+    }
+  }
+
+  Future<void> _checkAndShowSavingsPlanDialog(BuildContext context, double amount, String rechargeTimestamp) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'savingsPlanDialogClosed_$rechargeTimestamp';
+    final isDialogClosed = prefs.getBool(key) ?? false;
+
+    if (!isDialogClosed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showSavingsPlanDialog(context, amount, rechargeTimestamp);
+      });
+    }
+  }
+
+  Future<void> _showSavingsPlanDialog(BuildContext context, double amount, String rechargeTimestamp) async {
+    await showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Plan de gestion de votre revenu'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Nous vous proposons d\'allouer votre revenu selon la règle 50/30/20 :',
+              style: TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 10),
+            Text('• 50% pour les besoins : ${(amount * 0.50).toStringAsFixed(2)} FCFA'),
+            Text('• 30% pour les désirs : ${(amount * 0.30).toStringAsFixed(2)} FCFA'),
+            Text('• 20% pour l\'épargne : ${(amount * 0.20).toStringAsFixed(2)} FCFA'),
+            const SizedBox(height: 10),
+            const Text(
+              'Vous pouvez ajuster ces montants dans vos objectifs financiers.',
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              // Enregistrer que la boîte de dialogue a été fermée pour ce timestamp
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setBool('savingsPlanDialogClosed_$rechargeTimestamp', true);
+              Navigator.of(dialogContext).pop();
+            },
+            child: const Text('Fermer'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SavingsGoalsPage()),
+              );
+            },
+            child: const Text('Définir des objectifs'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadUserData() async {
@@ -432,11 +507,12 @@ class _HomePageState extends State<HomePage> {
   Future<void> _showAddSavingsDialog(BuildContext context) async {
     if (_currentUser == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Vous devez vous connecter pour ajouter une épargne.'),
-        backgroundColor: Colors.red,
-      ),
-    );
+        const SnackBar(
+          content: Text('Vous devez vous connecter pour ajouter une épargne.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      _messagingService.sendLocalNotification('Erreur', 'Vous devez être connecté pour ajouter une épargne.');
       return;
     }
 
@@ -489,6 +565,7 @@ class _HomePageState extends State<HomePage> {
           backgroundColor: Colors.red,
         ),
       );
+      _messagingService.sendLocalNotification('Erreur', 'Une erreur s\'est produite. Vérifiez votre connexion ou réessayez plus tard.');
     }
   }
 
@@ -522,8 +599,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-
-
   Future<void> _addSavings(double amount, String category, String? description, String goalId) async {
     if (_currentUser == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -542,6 +617,7 @@ class _HomePageState extends State<HomePage> {
           duration: const Duration(seconds: 4),
         ),
       );
+      _messagingService.sendLocalNotification('Erreur', 'Vous devez être connecté pour ajouter une épargne.');
       return;
     }
 
@@ -623,6 +699,7 @@ class _HomePageState extends State<HomePage> {
           duration: const Duration(seconds: 3),
         ),
       );
+      _messagingService.sendLocalNotification('Succès', 'Épargne de ${amount.toStringAsFixed(2)} FCFA ajoutée avec succès');
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -640,10 +717,10 @@ class _HomePageState extends State<HomePage> {
           duration: const Duration(seconds: 4),
         ),
       );
+      _messagingService.sendLocalNotification('Erreur', 'Erreur : Une erreur est survenue. Vérifiez votre solde ou réessayez.');
     }
   }
 }
-
 
 class _MonthDropdown extends StatelessWidget {
   final int selectedMonth;

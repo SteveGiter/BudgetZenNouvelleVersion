@@ -84,10 +84,13 @@ class _CircularChartState extends State<CircularChart> {
                             Tooltip(
                               message: 'Aucune statistique disponible',
                               child: Image.asset(
-                                'assets/noStatisticsImage.png',
+                                isDarkMode
+                                  ? 'assets/noStatisticsImage.png'
+                                  : 'assets/noStatisticsImage.png',
                                 width: 200,
                                 height: 200,
-                                color: isDarkMode ? AppColors.darkIconColor : null,
+                                color: isDarkMode ? Colors.white.withOpacity(0.7) : null,
+                                colorBlendMode: isDarkMode ? BlendMode.modulate : null,
                                 errorBuilder: (context, error, stackTrace) {
                                   return Icon(
                                     Icons.error,

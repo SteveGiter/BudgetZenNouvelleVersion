@@ -61,27 +61,9 @@ class _SettingsPageState extends State<SettingsPage> {
     await _fcmService.setNotificationsEnabled(value);
 
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: Text(
-                value ? 'Notifications activées' : 'Notifications désactivées',
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              },
-            ),
-          ],
-        ),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 3),
-      ),
+    _fcmService.sendLocalNotification(
+      'Préférence de notification',
+      value ? 'Notifications activées' : 'Notifications désactivées',
     );
   }
 
@@ -99,18 +81,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _navigateToHelp() {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(child: Text('Page d\'aide en cours de développement')),
-            Icon(Icons.close, color: Colors.white),
-          ],
-        ),
-        backgroundColor: Colors.blue,
-        duration: Duration(seconds: 3),
-      ),
+    _fcmService.sendLocalNotification(
+      'Aide',
+      'Page d\'aide en cours de développement',
     );
   }
 

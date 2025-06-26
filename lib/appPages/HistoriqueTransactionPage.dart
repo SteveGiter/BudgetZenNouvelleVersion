@@ -6,6 +6,7 @@ import '../colors/app_colors.dart';
 import '../services/firebase/firestore.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/custom_bottom_nav_bar.dart';
+import '../services/firebase/messaging.dart';
 
 class HistoriqueTransactionPage extends StatefulWidget {
   const HistoriqueTransactionPage({super.key});
@@ -17,6 +18,7 @@ class HistoriqueTransactionPage extends StatefulWidget {
 class _HistoriqueTransactionPageState extends State<HistoriqueTransactionPage> {
   final FirestoreService _firestoreService = FirestoreService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseMessagingService _messagingService = FirebaseMessagingService();
   final DateFormat dateFormat = DateFormat('EEEE dd MMMM yyyy \'à\' HH:mm:ss', 'fr_FR');
   String _selectedFilter = 'Tout';
   String _searchQuery = '';
@@ -315,6 +317,7 @@ class _HistoriqueTransactionPageState extends State<HistoriqueTransactionPage> {
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
+              const SizedBox(height: 8),
               Tooltip(
                 message: 'Aucune transaction disponible',
                 child: Image.asset(
@@ -324,7 +327,7 @@ class _HistoriqueTransactionPageState extends State<HistoriqueTransactionPage> {
                   fit: BoxFit.contain,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
               Text(
                 message,
                 style: TextStyle(fontSize: 16, color: color),
@@ -395,7 +398,7 @@ class _HistoriqueTransactionPageState extends State<HistoriqueTransactionPage> {
                 IconButton(
                   icon: const Icon(Icons.delete, color: AppColors.errorColor),
                   onPressed: () {
-                    _showDeleteDialog(doc.id, context);
+                    _showDeleteDialog(doc.id, context, categorie);
                   },
                 ),
               ],
@@ -417,7 +420,7 @@ class _HistoriqueTransactionPageState extends State<HistoriqueTransactionPage> {
     );
   }
 
-  void _showDeleteDialog(String transactionId, BuildContext context) {
+  void _showDeleteDialog(String transactionId, BuildContext context, String description) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -433,9 +436,10 @@ class _HistoriqueTransactionPageState extends State<HistoriqueTransactionPage> {
               child: const Text("Supprimer"),
               onPressed: () async {
                 Navigator.of(context).pop();
-                await _firestoreService.softDeleteTransaction(transactionId, _auth.currentUser!.uid);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Transaction supprimée")),
+                await _firestoreService.softDeleteTransaction(transactionId, _auth.currentUser!.uid, description: description);
+                await _messagingService.sendLocalNotification(
+                  'Transaction supprimée',
+                  'La transaction « $description » a bien été supprimée de votre historique.',
                 );
               },
             ),

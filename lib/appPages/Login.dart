@@ -322,7 +322,7 @@ class _LoginPageState extends State<LoginPage> {
                                               color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
                                             ),
                                           ),
-                                        ),
+                                        ), 
                                       ],
                                     ),
                                   ),
@@ -407,10 +407,10 @@ class _LoginPageState extends State<LoginPage> {
     String errorMessage;
     switch (e.code) {
       case 'invalid-email':
-        errorMessage = 'L’adresse email n’est pas bien écrite, vérifie-la.';
+        errorMessage = "L'adresse email n'est pas bien écrite, vérifie-la.";
         break;
       case 'user-not-found':
-        errorMessage = 'Cet email n’est lié à aucun compte.';
+        errorMessage = "Cet email n'est lié à aucun compte.";
         break;
       case 'wrong-password':
         errorMessage = 'Le mot de passe ne va pas, essaie encore.';
@@ -426,27 +426,11 @@ class _LoginPageState extends State<LoginPage> {
 
   void _showSuccessSnackbar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
+    _messagingService.sendLocalNotification('Succès', message);
   }
 
   void _showErrorSnackbar(String title, String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$title : $message'),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 3),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
+    _messagingService.sendLocalNotification(title, message);
   }
 }

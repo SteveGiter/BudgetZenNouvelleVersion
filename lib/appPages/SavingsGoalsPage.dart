@@ -79,22 +79,7 @@ class _SavingsGoalsPageState extends State<SavingsGoalsPage> {
   Future<void> _saveGoal() async {
     if (!_formKey.currentState!.validate()) return;
     if (_dueDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Expanded(child: Text('Veuillez sélectionner une date limite')),
-              IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      _messagingService.sendLocalNotification('Erreur', 'Veuillez sélectionner une date limite');
       return;
     }
 
@@ -127,21 +112,9 @@ class _SavingsGoalsPageState extends State<SavingsGoalsPage> {
 
       Navigator.pop(context);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(child: Text('Erreur: ${e.toString()}')),
-              IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
+      await _messagingService.sendLocalNotification(
+        'Erreur',
+        'Erreur lors de la création de l\'objectif : ${e.toString()}',
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);

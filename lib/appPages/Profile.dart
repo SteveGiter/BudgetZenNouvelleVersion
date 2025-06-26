@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import '../colors/app_colors.dart';
 import '../services/firebase/auth.dart';
 import '../services/firebase/firestore.dart';
+import '../services/firebase/messaging.dart';
 import '../widgets/custom_app_bar.dart';
+
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -17,6 +19,7 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final Auth _authService = Auth();
   final FirestoreService _firestoreService = FirestoreService();
+  final FirebaseMessagingService _messagingService = FirebaseMessagingService();
 
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
@@ -179,9 +182,7 @@ class _ProfilePageState extends State<ProfilePage> {
         return;
       }
 
-      await _firestoreService.updateUser(_currentUser!.uid, {
-        'numeroTelephone': phoneNumber,
-      });
+      await _firestoreService.updatePhoneNumberEverywhere(_currentUser!.uid, phoneNumber);
       setState(() => _isEditingPhone = false);
       _showSuccess('Numéro de téléphone mis à jour avec succès');
     } catch (e) {
@@ -293,41 +294,11 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(child: Text(message)),
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-            ),
-          ],
-        ),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 5),
-      ),
-    );
+    _messagingService.sendLocalNotification('Erreur', message);
   }
 
   void _showSuccess(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(child: Text(message)),
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-            ),
-          ],
-        ),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    _messagingService.sendLocalNotification('Succès', message);
   }
 
   @override

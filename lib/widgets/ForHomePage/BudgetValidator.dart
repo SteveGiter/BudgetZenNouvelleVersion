@@ -1,6 +1,7 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import '../../services/firebase/firestore.dart';
+import '../../services/firebase/messaging.dart';
 
 class BudgetValidator {
   static Future<bool> validateBudget(
@@ -53,21 +54,7 @@ class BudgetValidator {
   }
 
   static void _showSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(child: Text(message)),
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-            ),
-          ],
-        ),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 4),
-      ),
-    );
+    final messagingService = FirebaseMessagingService();
+    messagingService.sendLocalNotification('Erreur', message);
   }
 }

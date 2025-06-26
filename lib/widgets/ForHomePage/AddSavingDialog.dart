@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/firebase/firestore.dart';
 import 'package:collection/collection.dart';
+import '../../services/firebase/messaging.dart';
 
 class AddSavingsDialog extends StatefulWidget {
   final Function(double, String, String?, String, List<Map<String, dynamic>>)? onSavingsAdded;
@@ -28,6 +29,7 @@ class _AddSavingsDialogState extends State<AddSavingsDialog> {
   List<Map<String, dynamic>> _savingsGoals = [];
   bool _isLoading = true;
   bool _isSubmitting = false;
+  final FirebaseMessagingService _messagingService = FirebaseMessagingService();
 
   static const int maxDescriptionLength = 50;
 
@@ -83,13 +85,7 @@ class _AddSavingsDialogState extends State<AddSavingsDialog> {
         setState(() {
           _isLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Une erreur s\'est produite lors du chargement de vos objectifs. Veuillez réessayer plus tard.'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        _messagingService.sendLocalNotification('Erreur', 'Une erreur s\'est produite lors du chargement de vos objectifs. Veuillez réessayer plus tard.');
       }
     }
   }
@@ -204,19 +200,13 @@ class _AddSavingsDialogState extends State<AddSavingsDialog> {
                 final description = _descriptionController.text.isNotEmpty ? _descriptionController.text : null;
 
                 if (_selectedGoalId == null || _selectedGoalCategory == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Veuillez sélectionner un objectif d\'épargne valide.'),
-                      backgroundColor: Colors.red,
-                      duration: Duration(seconds: 4),
-                    ),
-                  );
+                  _messagingService.sendLocalNotification('Erreur', 'Veuillez sélectionner un objectif d\'épargne valide.');
                   setState(() => _isSubmitting = false);
                   return;
                 }
 
                 // Appeler FirestoreService pour gérer la transaction
-                await widget.firestoreService.addEpargne(
+                final result = await widget.firestoreService.addEpargne(
                   userId: widget.userId,
                   montant: amount,
                   categorie: _selectedGoalCategory!,
@@ -224,13 +214,26 @@ class _AddSavingsDialogState extends State<AddSavingsDialog> {
                   objectifId: _selectedGoalId!,
                 );
 
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Épargne de ${amount.toStringAsFixed(2)} FCFA ajoutée avec succès'),
-                    backgroundColor: Colors.green,
-                    duration: const Duration(seconds: 3),
-                  ),
-                );
+                final selectedGoal = _savingsGoals.firstWhereOrNull((goal) => goal['id'] == _selectedGoalId);
+                final goalName = selectedGoal?['nomObjectif'] ?? 'votre objectif';
+                final montantCible = (selectedGoal?['montantCible'] as double?) ?? 0.0;
+                final montantActuelAvant = (selectedGoal?['montantActuel'] as double?) ?? 0.0;
+                final montantVerse = (result['montantVerse'] as double?) ?? amount;
+                final objectifAtteint = (result['objectifAtteint'] as bool?) ?? false;
+                final montantRestant = (montantCible - (montantActuelAvant + montantVerse)).clamp(0, montantCible);
+
+                if (objectifAtteint) {
+                  await _messagingService.sendLocalNotification(
+                    'Objectif atteint !',
+                    'Félicitations ! Vous avez ajouté ${montantVerse.toStringAsFixed(2)} FCFA à l’objectif « $goalName » et vous venez d’atteindre votre objectif !',
+                  );
+                } else {
+                  await _messagingService.sendLocalNotification(
+                    'Épargne ajoutée',
+                    'Vous avez ajouté ${montantVerse.toStringAsFixed(2)} FCFA à l’objectif « $goalName »\n'
+                    'Montant restant pour atteindre l’objectif : ${montantRestant.toStringAsFixed(2)} FCFA',
+                  );
+                }
 
                 Navigator.pop(context);
               } catch (e) {
@@ -240,11 +243,11 @@ class _AddSavingsDialogState extends State<AddSavingsDialog> {
                     backgroundColor: Colors.red,
                     duration: const Duration(seconds: 4),
                   ),
-                );
+                ); 
               } finally {
                 setState(() => _isSubmitting = false);
               }
-            }
+            } 
           },
           child: _isSubmitting
               ? const SizedBox(
@@ -255,6 +258,6 @@ class _AddSavingsDialogState extends State<AddSavingsDialog> {
               : const Text('Ajouter'),
         ),
       ],
-    );
+    ); 
   }
 }

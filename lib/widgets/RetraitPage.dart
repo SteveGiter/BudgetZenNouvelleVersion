@@ -12,7 +12,7 @@ class RetraitPage extends StatefulWidget {
 
   @override
   State<RetraitPage> createState() => _RetraitPageState();
-}
+} 
 
 class _RetraitPageState extends State<RetraitPage> {
   final TextEditingController _phoneController = TextEditingController();
@@ -24,13 +24,14 @@ class _RetraitPageState extends State<RetraitPage> {
   final FirestoreService _firestoreService = FirestoreService();
   final User? _currentUser = FirebaseAuth.instance.currentUser;
   final FirebaseMessagingService _messagingService = FirebaseMessagingService();
+  bool _isSuccessProcessing = false;
 
   final Map<String, String> _countryCodes = {
     '+237': '🇨🇲 Cameroun',
     '+242': '🇨🇬 Congo',
     '+241': '🇬🇦 Gabon',
     '+235': '🇹🇩 Tchad',
-  };
+  };  
 
   // Limites pour le retrait
   static const double _minAmount = 100.0;
@@ -504,7 +505,7 @@ class _RetraitPageState extends State<RetraitPage> {
         if (_currentStep > 1) SizedBox(width: MediaQuery.of(context).size.width * 0.025),
         Expanded(
           child: ElevatedButton(
-            onPressed: _handleNext,
+            onPressed: _isSuccessProcessing ? null : _handleNext,
             style: ElevatedButton.styleFrom(
               backgroundColor: isDarkMode ? AppColors.darkButtonColor : AppColors.buttonColor,
               foregroundColor: AppColors.buttonTextColor,
@@ -518,13 +519,15 @@ class _RetraitPageState extends State<RetraitPage> {
               elevation: 3,
               minimumSize: Size(120, MediaQuery.of(context).size.width * 0.12),
             ),
-            child: Text(
-              _currentStep == 3 ? 'Confirmer' : 'Suivant',
-              style: TextStyle(
-                fontSize: MediaQuery.of(context).size.width * 0.04,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            child: _isSuccessProcessing
+                ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : Text(
+                    _currentStep == 3 ? 'Confirmer' : 'Suivant',
+                    style: TextStyle(
+                      fontSize: MediaQuery.of(context).size.width * 0.04,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
           ),
         ),
       ],
@@ -561,17 +564,6 @@ class _RetraitPageState extends State<RetraitPage> {
         }
         if (userDoc.data()?['numeroTelephone'] != fullPhone) {
           _showError('Le numéro doit correspondre à celui de votre compte.');
-          return;
-        }
-
-        // Vérifier l'unicité du numéro
-        final isUnique = await _firestoreService.isPhoneNumberUnique(
-          fullPhone,
-          userDoc.data()?['provider'] ?? 'unknown',
-          _currentUser!.uid,
-        );
-        if (!isUnique) {
-          _showError('Ce numéro est déjà utilisé par un autre compte.');
           return;
         }
 
@@ -697,10 +689,11 @@ class _RetraitPageState extends State<RetraitPage> {
           'Montant: ${amount.toStringAsFixed(2)} FCFA\nOpérateur: $operatorName\nNuméro: $fullPhone\nDate: $formattedDate\nNouveau solde: ${newBalance.toStringAsFixed(2)} FCFA',
         );
 
-        _showSuccess('Retrait de ${amount.toStringAsFixed(2)} FCFA effectué !');
+        setState(() => _isSuccessProcessing = false);
         Navigator.pop(context);
       }
     } on FirebaseException catch (e) {
+      setState(() => _isSuccessProcessing = false);
       String errorMessage;
       switch (e.code) {
         case 'network-request-failed':
@@ -715,6 +708,7 @@ class _RetraitPageState extends State<RetraitPage> {
       _showError(errorMessage);
       print('Erreur Firestore : $e');
     } catch (e) {
+      setState(() => _isSuccessProcessing = false);
       _showError('Erreur inattendue : $e');
       print('Erreur détaillée : $e');
     }
@@ -751,41 +745,7 @@ class _RetraitPageState extends State<RetraitPage> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(child: Text(message)),
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-            ),
-          ],
-        ),
-        backgroundColor: AppColors.errorColor,
-        duration: const Duration(seconds: 5),
-      ),
-    );
-  }
-
-  void _showSuccess(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(child: Text(message)),
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-            ),
-          ],
-        ),
-        backgroundColor: AppColors.successColor,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    _messagingService.sendLocalNotification('Erreur', message);
   }
 
   @override

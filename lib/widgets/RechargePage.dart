@@ -6,6 +6,7 @@ import '../../colors/app_colors.dart';
 import '../../services/firebase/firestore.dart';
 import '../../services/firebase/messaging.dart';
 import '../../widgets/custom_app_bar.dart';
+import '../appPages/SavingsGoalsPage.dart';
 
 class RechargePage extends StatefulWidget {
   final double montantDisponible;
@@ -26,6 +27,7 @@ class _RechargePageState extends State<RechargePage> {
   final FirestoreService _firestoreService = FirestoreService();
   final FirebaseMessagingService _messagingService = FirebaseMessagingService();
   final User? _currentUser = FirebaseAuth.instance.currentUser;
+  bool _isSuccessProcessing = false;
 
   final Map<String, String> _countryCodes = {
     '+237': '🇨🇲 Cameroun',
@@ -506,7 +508,7 @@ class _RechargePageState extends State<RechargePage> {
         if (_currentStep > 1) SizedBox(width: MediaQuery.of(context).size.width * 0.025),
         Expanded(
           child: ElevatedButton(
-            onPressed: _handleNext,
+            onPressed: _isSuccessProcessing ? null : _handleNext,
             style: ElevatedButton.styleFrom(
               backgroundColor: isDarkMode ? AppColors.darkButtonColor : AppColors.buttonColor,
               foregroundColor: AppColors.buttonTextColor,
@@ -520,7 +522,9 @@ class _RechargePageState extends State<RechargePage> {
               elevation: 3,
               minimumSize: Size(120, MediaQuery.of(context).size.width * 0.12),
             ),
-            child: Text(
+            child: _isSuccessProcessing
+                ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : Text(
               _currentStep == 3 ? 'Confirmer' : 'Suivant',
               style: TextStyle(
                 fontSize: MediaQuery.of(context).size.width * 0.04,
@@ -562,16 +566,6 @@ class _RechargePageState extends State<RechargePage> {
         }
         if (userDoc.data()?['numeroTelephone'] != fullPhone) {
           _showError('Le numéro doit correspondre à celui de votre compte.');
-          return;
-        }
-
-        final isUnique = await _firestoreService.isPhoneNumberUnique(
-          fullPhone,
-          userDoc.data()?['provider'] ?? 'unknown',
-          _currentUser!.uid,
-        );
-        if (!isUnique) {
-          _showError('Ce numéro est déjà utilisé par un autre compte.');
           return;
         }
 
@@ -632,6 +626,7 @@ class _RechargePageState extends State<RechargePage> {
         }
 
         double newBalance = 0.0;
+        final rechargeTimestamp = DateTime.now().millisecondsSinceEpoch.toString(); // Timestamp unique pour la recharge
         await FirebaseFirestore.instance.runTransaction((transaction) async {
           final compteRef = FirebaseFirestore.instance
               .collection('comptesMobiles')
@@ -668,54 +663,26 @@ class _RechargePageState extends State<RechargePage> {
         final fullPhone = '$_selectedCountryCode ${_phoneController.text.trim()}';
         final operatorName = _selectedOperator == 'orange' ? 'Orange Money' : 'MTN Mobile Money';
         final formattedDate = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
+        setState(() => _isSuccessProcessing = true);
         await _messagingService.sendLocalNotification(
           'Recharge effectuée avec succès',
           'Montant: ${amount.toStringAsFixed(2)} FCFA\nOpérateur: $operatorName\nNuméro: $fullPhone\nDate: $formattedDate\nNouveau solde: ${newBalance.toStringAsFixed(2)} FCFA',
         );
 
-        _showSuccess('Recharge de ${amount.toStringAsFixed(2)} FCFA effectuée !');
-        Navigator.pop(context, true);
-
-        await showDialog(
-          context: context,
-          builder: (BuildContext dialogContext) => AlertDialog(
-            title: const Text('Plan de gestion de votre revenu'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Nous vous proposons d\'allouer votre revenu selon la règle 50/30/20 :',
-                  style: TextStyle(fontSize: 16),
-                ),
-                const SizedBox(height: 10),
-                Text('• 50% pour les besoins : ${(amount * 0.50).toStringAsFixed(2)} FCFA'),
-                Text('• 30% pour les désirs : ${(amount * 0.30).toStringAsFixed(2)} FCFA'),
-                Text('• 20% pour l\'épargne : ${(amount * 0.20).toStringAsFixed(2)} FCFA'),
-                const SizedBox(height: 10),
-                const Text(
-                  'Vous pouvez ajuster ces montants dans vos objectifs financiers.',
-                  style: TextStyle(fontSize: 14, color: Colors.grey),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Fermer'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(dialogContext);
-                  Navigator.pushNamed(dialogContext, '/SavingsGoalsPage');
-                },
-                child: const Text('Définir des objectifs'),
-              ),
-            ],
-          ),
+        // Naviguer vers HomePage avec le montant et le timestamp
+        setState(() => _isSuccessProcessing = false);
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/HomePage',
+              (route) => false,
+          arguments: {
+            'rechargeAmount': amount,
+            'rechargeTimestamp': rechargeTimestamp, // Ajout du timestamp
+          },
         );
       }
     } on FirebaseException catch (e) {
+      setState(() => _isSuccessProcessing = false);
       String errorMessage;
       switch (e.code) {
         case 'network-request-failed':
@@ -730,6 +697,7 @@ class _RechargePageState extends State<RechargePage> {
       _showError(errorMessage);
       print('Erreur Firestore : $e');
     } catch (e) {
+      setState(() => _isSuccessProcessing = false);
       _showError('Erreur inattendue : $e');
       print('Erreur détaillée : $e');
     }
@@ -765,88 +733,12 @@ class _RechargePageState extends State<RechargePage> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(child: Text(message)),
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-            ),
-          ],
-        ),
-        backgroundColor: AppColors.errorColor,
-        duration: const Duration(seconds: 5),
-      ),
-    );
-  }
-
-  void _showSuccess(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(child: Text(message)),
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-            ),
-          ],
-        ),
-        backgroundColor: AppColors.successColor,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    _messagingService.sendLocalNotification('Erreur', message);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final args = ModalRoute.of(context)!.settings.arguments as bool?;
-
-    if (args == true) {
-      showDialog(
-        context: context,
-        builder: (BuildContext dialogContext) => AlertDialog(
-          title: const Text('Plan de gestion de votre revenu'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Nous vous proposons d\'allouer votre revenu selon la règle 50/30/20 :',
-                style: TextStyle(fontSize: 16),
-              ),
-              const SizedBox(height: 10),
-              Text('• 50% pour les besoins : ${(widget.montantDisponible * 0.50).toStringAsFixed(2)} FCFA'),
-              Text('• 30% pour les désirs : ${(widget.montantDisponible * 0.30).toStringAsFixed(2)} FCFA'),
-              Text('• 20% pour l\'épargne : ${(widget.montantDisponible * 0.20).toStringAsFixed(2)} FCFA'),
-              const SizedBox(height: 10),
-              const Text(
-                'Vous pouvez ajuster ces montants dans vos objectifs financiers.',
-                style: TextStyle(fontSize: 14, color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Fermer'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                Navigator.pushNamed(dialogContext, '/SavingsGoalsPage');
-              },
-              child: const Text('Définir des objectifs'),
-            ),
-          ],
-        ),
-      );
-    }
   }
 
   @override

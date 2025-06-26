@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../colors/app_colors.dart';
+import '../services/firebase/messaging.dart';
 
 class ResetPasswordPage extends StatefulWidget {
   const ResetPasswordPage({super.key});
@@ -13,6 +14,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   bool _isLoading = false;
+  final _messagingService = FirebaseMessagingService();
 
   @override
   Widget build(BuildContext context) {
@@ -158,9 +160,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                           }
 
                           // 9. Validation format complet avec regex
-                          final emailRegex = RegExp(
-                              r'^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$'
-                          );
+                          final emailRegex = RegExp(r'^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$');
 
                           if (!emailRegex.hasMatch(trimmedValue)) {
                             return 'Format d\'email invalide';
@@ -234,6 +234,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
             duration: const Duration(seconds: 3),
           ),
         );
+        _messagingService.sendLocalNotification('Succès', 'Lien envoyé à ${_emailController.text.trim()}');
         Navigator.pop(context); // Retour à la page de login
       } on FirebaseAuthException catch (e) {
         String errorMessage = 'Erreur inconnue';
@@ -260,6 +261,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
             duration: const Duration(seconds: 3),
           ),
         );
+        _messagingService.sendLocalNotification('Erreur', errorMessage);
       } finally {
         if (mounted) setState(() => _isLoading = false);
       }

@@ -109,8 +109,7 @@ class _AddUsersPageState extends State<AddUsersPage> {
       return 'L\'extension de domaine doit faire au moins 2 caractères';
     }
 
-    final emailRegex = RegExp(
-        r'^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$');
+    final emailRegex = RegExp(r'^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$');
     if (!emailRegex.hasMatch(trimmedValue)) {
       return 'Format d\'email invalide';
     }
@@ -412,6 +411,7 @@ class _AddUsersPageState extends State<AddUsersPage> {
             duration: const Duration(seconds: 3),
           ),
         );
+        _messagingService.sendLocalNotification('Erreur', 'Erreur lors de l\'ajout de l\'utilisateur : $e');
       } finally {
         setState(() {
           _isLoading = false;

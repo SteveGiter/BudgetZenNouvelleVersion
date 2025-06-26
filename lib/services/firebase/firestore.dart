@@ -227,7 +227,7 @@ class FirestoreService {
     await _firestore.collection('transactions').doc(id).update(data);
   }
 
-  Future<void> softDeleteTransaction(String transactionId, String userId) async {
+  Future<void> softDeleteTransaction(String transactionId, String userId, {String? description}) async {
     final doc = await _firestore.collection('transactions').doc(transactionId).get();
     final data = doc.data();
 
@@ -239,6 +239,13 @@ class FirestoreService {
     await _firestore.collection('transactions').doc(transactionId).update({
       fieldToUpdate: userId,
     });
+    final messagingService = FirebaseMessagingService();
+    await messagingService.sendLocalNotification(
+      'Transaction supprimée',
+      description != null
+        ? 'La transaction « $description » a été supprimée de votre historique.'
+        : 'Une transaction a été supprimée de votre historique.',
+    );
   }
 
   // -------------------- STATISTIQUES EN TEMPS RÉEL --------------------
@@ -365,8 +372,15 @@ class FirestoreService {
     await _firestore.collection('objectifsEpargne').doc(id).update(data);
   }
 
-  Future<void> deleteObjectifEpargne(String id) async {
+  Future<void> deleteObjectifEpargne(String id, {String? nomObjectif}) async {
     await _firestore.collection('objectifsEpargne').doc(id).delete();
+    final messagingService = FirebaseMessagingService();
+    await messagingService.sendLocalNotification(
+      'Objectif supprimé',
+      nomObjectif != null
+        ? 'L\'objectif d\'épargne « $nomObjectif » a été supprimé.'
+        : 'Un objectif d\'épargne a été supprimé.',
+    );
   }
 
   Stream<QuerySnapshot> streamObjectifsEpargneByCategorie(String userId, String categorie) {
@@ -429,7 +443,7 @@ class FirestoreService {
   }
 
   // -------------------- EPARGNES --------------------
-  Future<void> addEpargne({
+  Future<Map<String, dynamic>> addEpargne({
     required String userId,
     required double montant,
     required String categorie,
@@ -437,6 +451,8 @@ class FirestoreService {
     required String objectifId,
   }) async {
     try {
+      double montantVerse = montant;
+      bool objectifAtteint = false;
       await _firestore.runTransaction((transaction) async {
         final compteRef = _firestore.collection('comptesMobiles').doc(userId);
         final objectifRef = _firestore.collection('objectifsEpargne').doc(objectifId);
@@ -481,13 +497,13 @@ class FirestoreService {
 
         final montantRestant = montantCible - currentMontantActuel;
         if (montant > montantRestant) {
-          throw Exception('Le montant dépasse le restant pour cet objectif.');
+          montantVerse = montantRestant;
         }
 
         // Ajouter l'épargne
         transaction.set(epargneRef, {
           'userId': userId,
-          'montant': montant,
+          'montant': montantVerse,
           'categorie': categorie,
           'description': description,
           'objectifId': objectifId,
@@ -496,18 +512,20 @@ class FirestoreService {
 
         // Débiter le compte mobile
         transaction.update(compteRef, {
-          'montantDisponible': FieldValue.increment(-montant),
+          'montantDisponible': FieldValue.increment(-montantVerse),
           'derniereMiseAJour': FieldValue.serverTimestamp(),
         });
 
         // Mettre à jour l'objectif
-        final newMontantActuel = currentMontantActuel + montant;
+        final newMontantActuel = currentMontantActuel + montantVerse;
+        objectifAtteint = newMontantActuel >= montantCible;
         transaction.update(objectifRef, {
           'montantActuel': newMontantActuel,
-          'isCompleted': newMontantActuel >= montantCible,
+          'isCompleted': objectifAtteint,
           'derniereMiseAJour': FieldValue.serverTimestamp(),
         });
       });
+      return {'montantVerse': montantVerse, 'objectifAtteint': objectifAtteint};
     } catch (e) {
       debugPrint("Erreur lors de l'ajout de l'épargne : $e");
       rethrow;
@@ -659,6 +677,14 @@ class FirestoreService {
     final snapshot = await query.get();
 
     return snapshot.docs.every((doc) => doc.id == uid);
+  }
+
+  Future<void> updatePhoneNumberEverywhere(String uid, String numeroTelephone) async {
+    await updateUser(uid, {'numeroTelephone': numeroTelephone});
+    final role = await getUserRole(uid);
+    if (role != 'administrateur') {
+      await createOrUpdateCompteMobile(uid: uid, numeroTelephone: numeroTelephone);
+    }
   }
 
   void dispose() {
