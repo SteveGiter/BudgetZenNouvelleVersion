@@ -1,0 +1,10 @@
+[33m449342f[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mnotifications[m[33m)[m la notification en arrière plan lors de la transaction est à présent fonctionnelle
+[33m1e7d072[m[33m ([m[1;31morigin/main[m[33m, [m[1;32mmain[m[33m)[m Les notifications ont été implémenté un peu partout pour une expérience plus professionnelle. Des tests plus stricts sont necessaires. Y'a pas de notifications en arrière plan après une transaction
+[33mb65b5b2[m J'ai ajouté des notifications dans les pages admin, dans l'authentification entière
+[33mdea86eb[m Les notifications de transfert d'argent fonctionnent à présent en arrière plan
+[33mb535c65[m Les avancés du service de notification locale: Notification à: la connexion réussite, l'objectif d'épargne atteint, la recharge effectuée, retrait effectué, épargne définie, transaction (notification à l'expéditeur et au destinataire), mais tout ça ne se fait pas encore en arrière plan. Et fonctionnalité d'activation et désactivation des notifications est ok.
+[33md4d6af5[m Le service de notification locale est à présent actif. Elles ont été implémentées pour : la connexion réussite, l'objectif d'épargne atteint, la recharge effectuée. Et le paramètre d'activation des notifications fonctionne aussi.Et l'icone de l'appli est sans nom comme voulu
+[33me50e1d2[m En plus des fonctionnalités de base, les pages administrateur sont optimisées (Edition des infos user possible) et l'objectif du plan de gestion qui s'affiche après chaque recharge est atteint
+[33ma903510[m Les fontionnalitéss de base renforcées (gestion erreurs etc): Mais pas encore de proposition de gestion de revenu à la recharge
+[33mc24ccc2[m La structure de base du projet BudgetZen avec ces fonctionnalités de base
+[33m6b49c2d[m Initial commit de mon projet budgetZen centralisé sur la gestion de compte mobile

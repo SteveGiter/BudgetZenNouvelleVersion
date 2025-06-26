@@ -159,7 +159,29 @@ class FirebaseMessagingService {
 
   Future<void> sendLocalNotification(String title, String body) async {
     if (kIsWeb) {
-      print('Notification locale ignorée sur le web : $title - $body');
+      print('Tentative d\'envoi de notification web : $title - $body');
+      try {
+        // Demander la permission pour les notifications du navigateur
+        final permission = await _messaging.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+        
+        if (permission.authorizationStatus == AuthorizationStatus.authorized) {
+          // Sur le web, on ne peut pas envoyer directement via FCM
+          // Mais on peut afficher une notification dans la console ou utiliser une autre méthode
+          print('🔔 NOTIFICATION WEB: $title');
+          print('📝 $body');
+          
+          // Optionnel : Afficher une notification toast ou snackbar
+          // Cette partie peut être implémentée selon les besoins
+        } else {
+          print('Permission de notification refusée sur le web');
+        }
+      } catch (e) {
+        print('Erreur lors de l\'envoi de notification web : $e');
+      }
       return;
     }
 

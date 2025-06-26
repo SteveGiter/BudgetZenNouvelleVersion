@@ -56,7 +56,25 @@ void main() async {
 
   // Initialiser TransactionNotificationService
   final transactionNotificationService = TransactionNotificationService();
-  await transactionNotificationService.initialize();
+
+  // Écouter les changements d'état d'authentification pour initialiser le service de notification
+  FirebaseAuth.instance.authStateChanges().listen((User? user) async {
+    if (user != null) {
+      print('Utilisateur connecté, initialisation du service de notification de transaction');
+      await transactionNotificationService.initialize();
+    } else {
+      print('Utilisateur déconnecté, arrêt du service de notification de transaction');
+      transactionNotificationService.dispose();
+    }
+  });
+
+  // Écouter aussi les changements de token pour s'assurer que le service est réinitialisé
+  FirebaseAuth.instance.idTokenChanges().listen((User? user) async {
+    if (user != null) {
+      print('Token utilisateur changé, réinitialisation du service de notification de transaction');
+      await transactionNotificationService.initialize();
+    }
+  });
 
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);

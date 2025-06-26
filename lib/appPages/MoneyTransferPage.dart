@@ -561,7 +561,6 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
       );
 
       _resetForm();
-      _showSuccess('Transfert de ${amount.toStringAsFixed(2)} FCFA effectué avec succès !');
     } on FirebaseException catch (e) {
       print('Erreur Firebase : $e');
       _showError('Erreur Firebase : ${e.message ?? 'Une erreur est survenue'}');
@@ -697,11 +696,6 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
   void _showError(String message) {
     print('Affichage de l\'erreur : $message');
     _messagingService.sendLocalNotification('Erreur', message);
-  }
-
-  void _showSuccess(String message) {
-    print('Affichage du succès : $message');
-    _messagingService.sendLocalNotification('Succès', message);
   }
 
   @override
