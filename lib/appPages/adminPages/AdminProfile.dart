@@ -81,6 +81,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
           _setupUserStreams();
           _loadInitialUserData();
         } else {
+          if (!mounted) return;
           setState(() {
             _isAdmin = false;
             _isLoading = false;
@@ -88,11 +89,13 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
           _showError('Accès réservé aux administrateurs.');
         }
       } else {
+        if (!mounted) return;
         setState(() => _isLoading = false);
         _showError('Utilisateur non trouvé.');
       }
     } catch (e) {
       _showError('Erreur lors de la vérification du statut admin: ${e.toString()}');
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }
@@ -117,9 +120,11 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
       if (userDoc.exists && mounted) {
         _updateControllersFromSnapshot(userDoc);
       }
+      if (!mounted) return;
       setState(() => _isLoading = false);
     } catch (e) {
       _showError('Erreur lors du chargement des données initiales: ${e.toString()}');
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }
@@ -175,16 +180,19 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
       return;
     }
 
+    if (!mounted) return;
     setState(() => _isProcessing = true);
     try {
       await _firestoreService.updateUser(_currentUser!.uid, {
         'nomPrenom': _nameController.text,
       });
+      if (!mounted) return;
       setState(() => _isEditingName = false);
       _showSuccess('Nom mis à jour avec succès');
     } catch (e) {
       _showError('Erreur lors de la mise à jour du nom: ${e.toString()}');
     } finally {
+      if (!mounted) return;
       setState(() => _isProcessing = false);
     }
   }
@@ -203,6 +211,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
       return;
     }
 
+    if (!mounted) return;
     setState(() => _isProcessing = true);
     try {
       final isUnique = await _firestoreService.isPhoneNumberUniqueForAllUsers(
@@ -218,6 +227,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
       await _firestoreService.updateUser(_currentUser!.uid, {
         'numeroTelephone': phoneNumber,
       });
+      if (!mounted) return;
       setState(() => _isEditingPhone = false);
       _showSuccess('Numéro de téléphone mis à jour avec succès');
       await _firestoreService.createOrUpdateCompteMobile(
@@ -227,6 +237,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
     } catch (e) {
       _showError('Erreur lors de la mise à jour du numéro: ${e.toString()}');
     } finally {
+      if (!mounted) return;
       setState(() => _isProcessing = false);
     }
   }
@@ -252,6 +263,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
     final currentPassword = await _showPasswordDialog('Veuillez entrer votre mot de passe actuel');
     if (currentPassword == null || currentPassword.isEmpty) return;
 
+    if (!mounted) return;
     setState(() => _isProcessing = true);
     try {
       final credential = EmailAuthProvider.credential(
@@ -262,6 +274,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
       await _currentUser!.reauthenticateWithCredential(credential);
       await _currentUser!.updatePassword(_passwordController.text);
 
+      if (!mounted) return;
       setState(() {
         _isEditingPassword = false;
         _isObscuringPassword = true;
@@ -284,9 +297,9 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
           errorMessage = 'Erreur: ${e.message}';
       }
       _showError(errorMessage);
-    } catch (e) {
       _showError('Erreur inattendue: ${e.toString()}');
     } finally {
+      if (!mounted) return;
       setState(() => _isProcessing = false);
     }
   }

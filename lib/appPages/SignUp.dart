@@ -243,9 +243,9 @@ class _SignUpPageState extends State<SignUpPage> {
                                   ),
                                   validator: (value) {
                                     if (value == null || value.isEmpty) {
-                                      return 'Veuillez entrer votre email';
+                                       return 'Veuillez entrer votre email';
                                     }
-                                    final emailRegex = RegExp(r'^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$');
+                                    final emailRegex = RegExp(r"^[a-zA-Z0-9]+([._%+-][a-zA-Z0-9]+)*@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$");
                                     if (!emailRegex.hasMatch(value.trim())) {
                                       return 'Format d\'email invalide';
                                     }
@@ -465,21 +465,22 @@ class _SignUpPageState extends State<SignUpPage> {
 
   void _handleFirebaseAuthError(FirebaseAuthException e) {
     String message;
+    final email = _emailController.text.trim();
     switch (e.code) {
       case 'invalid-email':
-        message = "L'adresse email n'est pas bien écrite, vérifie-la.";
+        message = "L'adresse email « $email » n'est pas valide. Exemple attendu : nom.prenom@email.com";
         break;
       case 'email-already-in-use':
-        message = 'Cet email est déjà pris, essaie un autre.';
+        message = "Un compte existe déjà avec l'email « $email ». Essayez de vous connecter ou utilisez une autre adresse.";
         break;
       case 'weak-password':
-        message = 'Le mot de passe est trop simple, il doit être plus fort.';
+        message = "Votre mot de passe doit contenir au moins 8 caractères, une majuscule, une minuscule, un chiffre et un caractère spécial (ex : !@#\$%).";
         break;
       case 'network-request-failed':
-        message = 'Pas de connexion internet, vérifie ton réseau.';
+        message = "Impossible de créer un compte sans connexion Internet. Vérifiez votre réseau et réessayez.";
         break;
       default:
-        message = 'Un petit souci est arrivé, réessaie plus tard.';
+        message = "Une erreur inattendue est survenue. Veuillez réessayer dans quelques instants.";
     }
     _showErrorSnackbar('Erreur d\'inscription', message);
   }

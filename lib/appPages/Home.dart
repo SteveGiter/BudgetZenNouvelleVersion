@@ -34,7 +34,7 @@ class _HomePageState extends State<HomePage> {
   ];
 
   List<IconData> cardIcons = [
-    Icons.account_balance_wallet,
+    Icons.account_balance,
     Icons.shopping_cart,
     Icons.monetization_on,
     Icons.savings,
@@ -61,6 +61,8 @@ class _HomePageState extends State<HomePage> {
   double epargnes = 0.0;
   bool isExpanded = false;
   int selectedMonth = DateTime.now().month;
+  String _selectedBudgetType = 'mensuel';
+  double? _currentBudget;
 
   StreamSubscription<DocumentSnapshot>? _compteSubscription;
   StreamSubscription<double>? _depensesSubscription;
@@ -74,6 +76,7 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _loadUserData();
+    _fetchCurrentBudget();
   }
 
   @override
@@ -96,7 +99,7 @@ class _HomePageState extends State<HomePage> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showSavingsPlanDialog(context, amount, rechargeTimestamp);
       });
-    }
+    }  
   }
 
   Future<void> _showSavingsPlanDialog(BuildContext context, double amount, String rechargeTimestamp) async {
@@ -215,6 +218,38 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  void _fetchCurrentBudget() async {
+    if (_currentUser == null) return;
+    DateTime now = DateTime.now();
+    DateTime periodeDebut;
+    DateTime periodeFin;
+    if (_selectedBudgetType == 'mensuel') {
+      periodeDebut = DateTime(now.year, now.month, 1);
+      periodeFin = DateTime(now.year, now.month + 1, 0);
+    } else if (_selectedBudgetType == 'annuel') {
+      periodeDebut = DateTime(now.year, 1, 1);
+      periodeFin = DateTime(now.year, 12, 31);
+    } else {
+      // hebdomadaire
+      int weekday = now.weekday;
+      DateTime monday = now.subtract(Duration(days: weekday - 1));
+      DateTime sunday = monday.add(Duration(days: 6));
+      periodeDebut = DateTime(monday.year, monday.month, monday.day);
+      periodeFin = DateTime(sunday.year, sunday.month, sunday.day);
+    }
+    final doc = await _firestoreService.getBudgetForPeriod(
+      _currentUser!.uid,
+      periodeDebut,
+      periodeFin,
+      type: _selectedBudgetType,
+    );
+    if (mounted) {
+      setState(() {
+        _currentBudget = doc != null ? (doc['montant'] as num?)?.toDouble() : null;
+      });
+    }
+  }
+
   @override
   void dispose() {
     _compteSubscription?.cancel();
@@ -233,12 +268,12 @@ class _HomePageState extends State<HomePage> {
           Row(
             children: [
               Icon(
-                Icons.bar_chart,
+                Icons.insights,
                 color: isDarkMode ? AppColors.darkSecondaryColor : Colors.blue.shade800,
                 size: 50,
               ),
               const SizedBox(width: 10),
-              Text(
+              Text( 
                 'Statistiques',
                 style: TextStyle(
                   fontSize: 20,
@@ -277,125 +312,176 @@ class _HomePageState extends State<HomePage> {
       ),
       body: _currentUser == null
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-        children: [
-          SizedBox(
-            height: 220,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: containerTitle.length,
-              itemBuilder: (BuildContext context, int index) {
-                double montant = 0.0;
-                switch (index) {
-                  case 0:
-                    montant = montantDisponible;
-                    break;
-                  case 1:
-                    montant = depenses;
-                    break;
-                  case 2:
-                    montant = revenus;
-                    break;
-                  case 3:
-                    montant = epargnes;
-                    break;
-                }
-
-                return Padding(
-                  padding: const EdgeInsets.all(20),
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                   child: Card(
-                    elevation: 5.0,
-                    child: IntrinsicWidth(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(minWidth: 220, maxWidth: 300),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(10),
-                            color: isDarkMode
-                                ? AppColors.darkCardColors[index % AppColors.darkCardColors.length]
-                                : cardBgColor[index],
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(
-                                      cardIcons[index],
-                                      size: 32,
-                                      color: isDarkMode
-                                          ? AppColors.darkPrimaryColor
-                                          : AppColors.primaryColor,
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      containerTitle[index],
-                                      style: TextStyle(
-                                        fontSize: 20,
-                                        fontFamily: 'LucidaCalligraphy',
-                                        color: isDarkMode
-                                            ? AppColors.darkTextColor
-                                            : AppColors.textColor,
-                                      ),
-                                    ),
+                    elevation: 1,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    color: isDarkMode ? AppColors.darkCardColors[0] : Colors.white,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: Row(
+                        children: [
+                          Icon(Icons.account_balance_wallet,
+                              color: isDarkMode ? AppColors.darkSecondaryColor : Colors.green, size: 16),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Center(
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: _selectedBudgetType,
+                                  items: [
+                                    DropdownMenuItem(value: 'hebdomadaire', child: Text('Hebdo.')),
+                                    DropdownMenuItem(value: 'mensuel', child: Text('Mensuel')),
+                                    DropdownMenuItem(value: 'annuel', child: Text('Annuel')),
                                   ],
-                                ),
-                                space,
-                                Text(
-                                  'Montant : ${montant.toStringAsFixed(2)} FCFA',
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _selectedBudgetType = value ?? 'mensuel';
+                                    });
+                                  },
                                   style: TextStyle(
-                                    fontSize: 16,
-                                    color: isDarkMode
-                                        ? AppColors.darkTextColor
-                                        : AppColors.textColor,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                    color: isDarkMode ? AppColors.darkTextColor : Colors.blue.shade900,
                                   ),
+                                  dropdownColor: isDarkMode ? AppColors.darkCardColors[0] : Colors.white,
                                 ),
-                                space,
-                                Text(
-                                  infoMontant[index],
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: isDarkMode
-                                        ? AppColors.darkSecondaryTextColor
-                                        : Colors.grey.shade600,
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
                           ),
-                        ),
+                          const SizedBox(width: 6),
+                          _buildBudgetRealtimeWidget(),
+                        ],
                       ),
                     ),
                   ),
-                );
-              },
+                ),
+                Expanded(
+                  child: ListView(
+                    children: [
+                      SizedBox(
+                        height: 220,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: containerTitle.length,
+                          itemBuilder: (BuildContext context, int index) {
+                            double montant = 0.0;
+                            switch (index) {
+                              case 0:
+                                montant = montantDisponible;
+                                break;
+                              case 1:
+                                montant = depenses;
+                                break;
+                              case 2:
+                                montant = revenus;
+                                break;
+                              case 3:
+                                montant = epargnes;
+                                break;
+                            }
+
+                            return Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Card(
+                                elevation: 5.0,
+                                child: IntrinsicWidth(
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(minWidth: 220, maxWidth: 300),
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(10),
+                                        color: isDarkMode
+                                            ? AppColors.darkCardColors[index % AppColors.darkCardColors.length]
+                                            : cardBgColor[index],
+                                      ),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(16),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Icon(
+                                                  cardIcons[index],
+                                                  size: 32,
+                                                  color: isDarkMode
+                                                      ? AppColors.darkPrimaryColor
+                                                      : AppColors.primaryColor,
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Text(
+                                                  containerTitle[index],
+                                                  style: TextStyle(
+                                                    fontSize: 20,
+                                                    fontFamily: 'LucidaCalligraphy',
+                                                    color: isDarkMode
+                                                        ? AppColors.darkTextColor
+                                                        : AppColors.textColor,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            space,
+                                            Text(
+                                              'Montant : ${montant.toStringAsFixed(2)} FCFA',
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                color: isDarkMode
+                                                    ? AppColors.darkTextColor
+                                                    : AppColors.textColor,
+                                              ),
+                                            ),
+                                            space,
+                                            Text(
+                                              infoMontant[index],
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                color: isDarkMode
+                                                    ? AppColors.darkSecondaryTextColor
+                                                    : Colors.grey.shade600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      _buildHeader(isDarkMode),
+                      const SizedBox(height: 20),
+                      CircularChart(
+                        userId: _currentUser!.uid,
+                        selectedMonth: selectedMonth,
+                      ),
+                      const SizedBox(height: 20),
+                      RevenusChart(
+                        userId: _currentUser!.uid,
+                        selectedMonth: selectedMonth,
+                      ),
+                      const SizedBox(height: 20),
+                      DepensesChart(
+                        userId: _currentUser!.uid,
+                        selectedMonth: selectedMonth,
+                      ),
+                      const SizedBox(height: 20),
+                      EpargnesChart(
+                        userId: _currentUser!.uid,
+                        selectedMonth: selectedMonth,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ),
-          _buildHeader(isDarkMode),
-          const SizedBox(height: 20),
-          CircularChart(
-            userId: _currentUser!.uid,
-            selectedMonth: selectedMonth,
-          ),
-          const SizedBox(height: 20),
-          RevenusChart(
-            userId: _currentUser!.uid,
-            selectedMonth: selectedMonth,
-          ),
-          const SizedBox(height: 20),
-          DepensesChart(
-            userId: _currentUser!.uid,
-            selectedMonth: selectedMonth,
-          ),
-          const SizedBox(height: 20),
-          EpargnesChart(
-            userId: _currentUser!.uid,
-            selectedMonth: selectedMonth,
-          ),
-        ],
-      ),
       floatingActionButton: Stack(
         children: [
           Positioned(
@@ -489,8 +575,24 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
             ),
+            Positioned(
+              bottom: 370,
+              right: 16,
+              child: Tooltip(
+                message: "Définir mon budget",
+                child: FloatingActionButton(
+                  heroTag: 'budget-fab',
+                  shape: const CircleBorder(),
+                  backgroundColor: isDarkMode ? AppColors.darkSecondaryColor : Colors.green,
+                  child: const Icon(Icons.account_balance_wallet, color: Colors.white),
+                  onPressed: () {
+                    _showBudgetFormDialog(context);
+                  },
+                ),
+              ),
+            ),
           ],
-        ],
+        ], 
       ),
       bottomNavigationBar: CustomBottomNavBar(
         currentIndex: 0,
@@ -499,19 +601,13 @@ class _HomePageState extends State<HomePage> {
             final routes = ['/HomePage', '/HistoriqueTransactionPage', '/historique-epargne-no-back', '/SettingsPage'];
             Navigator.pushReplacementNamed(context, routes[index]);
           }
-        },
-      ),
+        }, 
+      ), 
     );
   }
 
   Future<void> _showAddSavingsDialog(BuildContext context) async {
     if (_currentUser == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vous devez vous connecter pour ajouter une épargne.'),
-          backgroundColor: Colors.red,
-        ),
-      );
       _messagingService.sendLocalNotification('Erreur', 'Vous devez être connecté pour ajouter une épargne.');
       return;
     }
@@ -559,12 +655,6 @@ class _HomePageState extends State<HomePage> {
         ),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Une erreur s\'est produite. Vérifiez votre connexion ou réessayez plus tard.'),
-          backgroundColor: Colors.red,
-        ),
-      );
       _messagingService.sendLocalNotification('Erreur', 'Une erreur s\'est produite. Vérifiez votre connexion ou réessayez plus tard.');
     }
   }
@@ -601,22 +691,6 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _addSavings(double amount, String category, String? description, String goalId) async {
     if (_currentUser == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Expanded(child: Text('Vous devez être connecté pour ajouter une épargne.')),
-              IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
-      );
       _messagingService.sendLocalNotification('Erreur', 'Vous devez être connecté pour ajouter une épargne.');
       return;
     }
@@ -683,42 +757,190 @@ class _HomePageState extends State<HomePage> {
         });
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(child: Text('Épargne de ${amount.toStringAsFixed(2)} FCFA ajoutée avec succès')),
-              IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 3),
-        ),
-      );
       _messagingService.sendLocalNotification('Succès', 'Épargne de ${amount.toStringAsFixed(2)} FCFA ajoutée avec succès');
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(child: Text('Erreur : Une erreur est survenue. Vérifiez votre solde ou réessayez.')),
-              IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
-      );
       _messagingService.sendLocalNotification('Erreur', 'Erreur : Une erreur est survenue. Vérifiez votre solde ou réessayez.');
     }
+  }
+
+  Future<void> _showBudgetFormDialog(BuildContext context) async {
+    final _formKey = GlobalKey<FormState>();
+    final _amountController = TextEditingController();
+    String _selectedType = 'mensuel';
+    DateTime now = DateTime.now();
+    DateTime periodeDebut = DateTime(now.year, now.month, 1);
+    DateTime periodeFin = DateTime(now.year, now.month + 1, 0);
+    bool _isSubmitting = false;
+
+    void _updatePeriod(String type) {
+      if (type == 'mensuel') {
+        periodeDebut = DateTime(now.year, now.month, 1);
+        periodeFin = DateTime(now.year, now.month + 1, 0);
+      } else if (type == 'annuel') {
+        periodeDebut = DateTime(now.year, 1, 1);
+        periodeFin = DateTime(now.year, 12, 31);
+      } else if (type == 'hebdomadaire') {
+        // Trouver le lundi de la semaine courante
+        int weekday = now.weekday;
+        DateTime monday = now.subtract(Duration(days: weekday - 1));
+        DateTime sunday = monday.add(Duration(days: 6));
+        periodeDebut = DateTime(monday.year, monday.month, monday.day);
+        periodeFin = DateTime(sunday.year, sunday.month, sunday.day);
+      }
+    }
+    _updatePeriod(_selectedType);
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('Définir mon budget'),
+              content: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: _amountController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(labelText: 'Montant du budget'),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Veuillez entrer un montant';
+                        }
+                        if (double.tryParse(value) == null) {
+                          return 'Veuillez entrer un nombre valide';
+                        }
+                        return null;
+                      },
+                    ),
+                    SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: _selectedType,
+                      items: [
+                        DropdownMenuItem(value: 'hebdomadaire', child: Text('Hebdomadaire')),
+                        DropdownMenuItem(value: 'mensuel', child: Text('Mensuel')),
+                        DropdownMenuItem(value: 'annuel', child: Text('Annuel')),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedType = value ?? 'mensuel';
+                          _updatePeriod(_selectedType);
+                        });
+                      },
+                      decoration: InputDecoration(labelText: 'Type de budget'),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: Text('Annuler'),
+                ),
+                ElevatedButton(
+                  onPressed: _isSubmitting
+                      ? null
+                      : () async {
+                          if (_formKey.currentState!.validate()) {
+                            setState(() => _isSubmitting = true);
+                            // Vérification de l'existence d'un budget pour la période et le type
+                            final existingBudget = await _firestoreService.getBudgetForPeriod(
+                              _currentUser!.uid,
+                              periodeDebut,
+                              periodeFin,
+                              type: _selectedType,
+                            );
+                            if (existingBudget != null) {
+                              setState(() => _isSubmitting = false);
+                              String errorMsg;
+                              if (_selectedType == 'annuel') {
+                                errorMsg = 'Vous avez déjà défini un budget annuel pour cette année.';
+                              } else if (_selectedType == 'hebdomadaire') {
+                                errorMsg = 'Vous avez déjà défini un budget hebdomadaire pour cette semaine.';
+                              } else {
+                                errorMsg = 'Vous avez déjà défini un budget mensuel pour ce mois.';
+                              }
+                              _messagingService.sendLocalNotification('Erreur', errorMsg);
+                              return;
+                            }
+                            try {
+                              await _firestoreService.definirBudget(
+                                userId: _currentUser!.uid,
+                                montant: double.parse(_amountController.text),
+                                type: _selectedType,
+                                periodeDebut: periodeDebut,
+                                periodeFin: periodeFin,
+                              );
+                              Navigator.of(dialogContext).pop();
+                              _messagingService.sendLocalNotification('Succès', 'Budget enregistré avec succès !');
+                            } catch (e) {
+                              setState(() => _isSubmitting = false);
+                              _messagingService.sendLocalNotification('Erreur', 'Erreur lors de l\'enregistrement du budget.');
+                            }
+                          }
+                        },
+                  child: _isSubmitting ? CircularProgressIndicator() : Text('Enregistrer'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildBudgetRealtimeWidget() {
+    if (_currentUser == null) {
+      return Text('-', style: TextStyle(color: Colors.grey[400], fontSize: 12));
+    }
+    DateTime now = DateTime.now();
+    DateTime periodeDebut;
+    DateTime periodeFin;
+    if (_selectedBudgetType == 'mensuel') {
+      periodeDebut = DateTime(now.year, now.month, 1);
+      periodeFin = DateTime(now.year, now.month + 1, 0);
+    } else if (_selectedBudgetType == 'annuel') {
+      periodeDebut = DateTime(now.year, 1, 1);
+      periodeFin = DateTime(now.year, 12, 31);
+    } else {
+      int weekday = now.weekday;
+      DateTime monday = now.subtract(Duration(days: weekday - 1));
+      DateTime sunday = monday.add(Duration(days: 6));
+      periodeDebut = DateTime(monday.year, monday.month, monday.day);
+      periodeFin = DateTime(sunday.year, sunday.month, sunday.day);
+    }
+    final query = FirebaseFirestore.instance
+        .collection('budgets')
+        .where('userId', isEqualTo: _currentUser!.uid)
+        .where('periodeDebut', isEqualTo: Timestamp.fromDate(periodeDebut))
+        .where('periodeFin', isEqualTo: Timestamp.fromDate(periodeFin))
+        .where('type', isEqualTo: _selectedBudgetType)
+        .limit(1)
+        .snapshots();
+    return StreamBuilder<QuerySnapshot>(
+      stream: query,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return SizedBox(width: 60, child: LinearProgressIndicator(minHeight: 2));
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Text('Aucun', style: TextStyle(color: Colors.grey[400], fontSize: 12));
+        }
+        final doc = snapshot.data!.docs.first;
+        final montant = (doc['montant'] as num?)?.toDouble() ?? 0.0;
+        return Text(
+          '${montant.toStringAsFixed(0)} FCFA',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+            color: Colors.green[700],
+          ),
+        );
+      },
+    );
   }
 }
 

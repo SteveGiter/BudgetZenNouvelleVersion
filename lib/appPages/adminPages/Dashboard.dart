@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 import '../../colors/app_colors.dart';
 import '../../widgets/ForAdmin/admin_bottom_nav_bar.dart';
 import '../../widgets/custom_app_bar.dart';
-import 'EditUser.dart';
+import 'EditUser.dart' hide StringExtension;
 
 class DashboardAdminPage extends StatefulWidget {
   const DashboardAdminPage({super.key});
@@ -19,7 +19,7 @@ class DashboardAdminPage extends StatefulWidget {
 class _DashboardAdminPageState extends State<DashboardAdminPage> {
   final FirestoreService _firestore = FirestoreService();
   final FirebaseMessagingService _messagingService = FirebaseMessagingService();
-  final DateFormat dateFormat = DateFormat('EEEE dd MMMM yyyy \'à\' HH:mm:ss', 'fr_FR');
+  final DateFormat dateFormat = DateFormat('dd/MM/yyyy HH:mm', 'fr_FR');
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _selectedFilter = 'Tout';
@@ -32,7 +32,7 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text.toLowerCase();
-        _selectedUids.clear(); // Désélectionner tous les utilisateurs lors d'une nouvelle recherche
+        _selectedUids.clear();
       });
     });
   }
@@ -57,107 +57,74 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
       ),
       body: Column(
         children: [
-          if (_selectedUids.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: ElevatedButton(
-                onPressed: _isDeleting ? null : _deleteSelectedUsers,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: AppColors.buttonTextColor,
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isSmallScreen ? 16 : 24,
-                    vertical: isSmallScreen ? 12 : 16,
-                  ),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: 3,
-                ),
-                child: _isDeleting
-                    ? CircularProgressIndicator(color: AppColors.buttonTextColor)
-                    : Text(
-                  'Supprimer (${_selectedUids.length})',
-                  style: TextStyle(
-                    fontSize: isSmallScreen ? 14 : 16,
-                    color: AppColors.buttonTextColor,
-                  ),
-                ),
-              ),
-            ),
+          // Statistics Section
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                if (_selectedUids.isEmpty)
-                  ElevatedButton(
-                    onPressed: _selectAllUsers,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
-                      foregroundColor: isDarkMode ? AppColors.darkButtonTextColor : Colors.black, // Changé ici (optionnel)
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isSmallScreen ? 16 : 24,
-                        vertical: isSmallScreen ? 12 : 16,
-                      ),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 3,
-                    ),
-                    child: Text(
-                      'Tout sélectionner',
-                      style: TextStyle(
-                        fontSize: isSmallScreen ? 14 : 16,
-                        color: isDarkMode ? AppColors.darkButtonTextColor : Colors.black, // Changé ici
-                      ),
-                    ),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildStatCard(
+                    icon: Icons.people,
+                    label: 'Utilisateurs',
+                    future: _getTotalUsers(),
+                    isDarkMode: isDarkMode,
+                    isSmallScreen: isSmallScreen,
+                    color: Colors.blue,
                   ),
-                if (_selectedUids.isNotEmpty)
-                  ElevatedButton(
-                    onPressed: _deselectAllUsers,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
-                      foregroundColor: isDarkMode ? AppColors.darkButtonTextColor : Colors.black,
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isSmallScreen ? 16 : 24,
-                        vertical: isSmallScreen ? 12 : 16,
-                      ),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 3,
-                    ),
-                    child: Text(
-                      'Tout décocher',
-                      style: TextStyle(
-                        fontSize: isSmallScreen ? 14 : 16,
-                        color: isDarkMode ? AppColors.darkButtonTextColor : Colors.black,
-                      ),
-                    ),
+                  _buildStatCard(
+                    icon: Icons.admin_panel_settings,
+                    label: 'Admins',
+                    future: _getTotalAdmins(),
+                    isDarkMode: isDarkMode,
+                    isSmallScreen: isSmallScreen,
+                    color: Colors.green,
                   ),
-              ],
+                  _buildStatCard(
+                    icon: Icons.swap_horiz,
+                    label: 'Transactions',
+                    future: _getTotalTransactions(),
+                    isDarkMode: isDarkMode,
+                    isSmallScreen: isSmallScreen,
+                    color: Colors.orange,
+                  ),
+                  _buildStatCard(
+                    icon: Icons.account_balance_wallet,
+                    label: 'Solde',
+                    future: _getTotalSolde().then((value) => NumberFormat.currency(locale: 'fr_FR', symbol: '€').format(value)),
+                    isDarkMode: isDarkMode,
+                    isSmallScreen: isSmallScreen,
+                    color: Colors.purple,
+                  ),
+                ],
+              ),
             ),
           ),
+          // Action Bar
+          _buildActionBar(
+            isDarkMode: isDarkMode,
+            isSmallScreen: isSmallScreen,
+            onSelectAll: _selectAllUsers,
+            onDeselectAll: _deselectAllUsers,
+            onDelete: _deleteSelectedUsers,
+            hasSelection: _selectedUids.isNotEmpty,
+            selectedCount: _selectedUids.length,
+            isDeleting: _isDeleting,
+          ),
+          // User List Section
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
-              ),
-              child: SingleChildScrollView(
-                padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Liste des Utilisateurs',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildSearchBar(isDarkMode, isSmallScreen),
-                    const SizedBox(height: 12),
-                    _buildFilterButtons(context, isDarkMode, isSmallScreen),
-                    const SizedBox(height: 12),
-                    _buildUsersList(context, isDarkMode, isSmallScreen),
-                  ],
-                ),
+            child: Card(
+              margin: const EdgeInsets.all(8),
+              elevation: 2,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              color: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
+              child: Column(
+                children: [
+                  _buildSearchBar(isDarkMode, isSmallScreen),
+                  _buildFilterButtons(context, isDarkMode, isSmallScreen),
+                  const Divider(height: 1),
+                  Expanded(child: _buildUsersList(context, isDarkMode, isSmallScreen)),
+                ],
               ),
             ),
           ),
@@ -175,31 +142,68 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
     );
   }
 
-  Widget _buildSearchBar(bool isDarkMode, bool isSmallScreen) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor,
+  // Simplified Stat Card
+  Widget _buildStatCard({
+    required IconData icon,
+    required String label,
+    required Future future,
+    required bool isDarkMode,
+    required bool isSmallScreen,
+    Color? color,
+  }) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: Container(
+        width: isSmallScreen ? 100 : 120,
+        padding: const EdgeInsets.all(8),
+        child: FutureBuilder(
+          future: future,
+          builder: (context, snapshot) {
+            String value = snapshot.hasData ? snapshot.data.toString() : '0';
+            if (snapshot.hasError) value = 'Erreur';
+
+            return Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: isSmallScreen ? 20 : 24, color: color),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: isSmallScreen ? 12 : 14,
+                    color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
+                  ),
+                ),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: isSmallScreen ? 10 : 12,
+                    color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            );
+          },
         ),
       ),
+    );
+  }
+
+  // Simplified Search Bar
+  Widget _buildSearchBar(bool isDarkMode, bool isSmallScreen) {
+    return Padding(
+      padding: const EdgeInsets.all(8),
       child: TextField(
         controller: _searchController,
         decoration: InputDecoration(
-          hintText: 'Rechercher par nom, email ou date (JJ/MM/AAAA)...',
-          prefixIcon: Icon(
-            Icons.search,
-            color: isDarkMode ? AppColors.darkIconColor : AppColors.iconColor,
-            size: isSmallScreen ? 20 : 24,
-          ),
+          hintText: 'Rechercher (nom, email, JJ/MM/AAAA)',
+          prefixIcon: Icon(Icons.search, size: isSmallScreen ? 18 : 20),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
-            icon: Icon(
-              Icons.clear,
-              color: isDarkMode ? AppColors.darkIconColor : AppColors.iconColor,
-              size: isSmallScreen ? 20 : 24,
-            ),
+            icon: Icon(Icons.clear, size: isSmallScreen ? 18 : 20),
             onPressed: () {
               _searchController.clear();
               setState(() {
@@ -209,32 +213,51 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
             },
           )
               : null,
-          border: InputBorder.none,
-          hintStyle: TextStyle(
-            color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
-            fontSize: isSmallScreen ? 14 : 16,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor),
           ),
           filled: true,
           fillColor: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
+          contentPadding: EdgeInsets.symmetric(vertical: isSmallScreen ? 8 : 12, horizontal: 12),
         ),
-        style: TextStyle(
-          color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
-          fontSize: isSmallScreen ? 14 : 16,
-        ),
+        style: TextStyle(fontSize: isSmallScreen ? 12 : 14),
       ),
     );
   }
 
+  // Simplified Filter Buttons
   Widget _buildFilterButtons(BuildContext context, bool isDarkMode, bool isSmallScreen) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
         child: Row(
           children: ['Tout', 'Administrateur', 'Utilisateur'].map((label) {
             return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: _buildFilterChip(label, context, isDarkMode, isSmallScreen),
+              padding: const EdgeInsets.only(right: 4),
+              child: FilterChip(
+                label: Text(label, style: TextStyle(fontSize: isSmallScreen ? 10 : 12)),
+                selected: _selectedFilter == label,
+                selectedColor: isDarkMode ? AppColors.darkPrimaryColor : AppColors.primaryColor,
+                backgroundColor: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
+                shape: RoundedRectangleBorder(
+                  side: BorderSide(color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                onSelected: (bool selected) {
+                  setState(() {
+                    _selectedFilter = selected ? label : 'Tout';
+                    _selectedUids.clear();
+                  });
+                },
+                labelStyle: TextStyle(
+                  color: _selectedFilter == label
+                      ? Colors.white
+                      : (isDarkMode ? AppColors.darkTextColor : AppColors.textColor),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             );
           }).toList(),
         ),
@@ -242,41 +265,7 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
     );
   }
 
-  Widget _buildFilterChip(String label, BuildContext context, bool isDarkMode, bool isSmallScreen) {
-    final isSelected = _selectedFilter == label;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: FilterChip(
-        label: Text(
-          label,
-          style: TextStyle(
-            fontSize: isSmallScreen ? 12 : 14,
-            color: isSelected
-                ? (isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor)
-                : (isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor),
-          ),
-        ),
-        selected: isSelected,
-        selectedColor: isDarkMode ? AppColors.darkPrimaryColor : AppColors.primaryColor,
-        checkmarkColor: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
-        backgroundColor: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
-        shape: RoundedRectangleBorder(
-          side: BorderSide(
-            color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor,
-            width: 1,
-          ),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        onSelected: (bool selected) {
-          setState(() {
-            _selectedFilter = selected ? label : 'Tout';
-            _selectedUids.clear();
-          });
-        },
-      ),
-    );
-  }
-
+  // Scrollable User List
   Widget _buildUsersList(BuildContext context, bool isDarkMode, bool isSmallScreen) {
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore.firestore.collection('utilisateurs').snapshots(),
@@ -284,11 +273,8 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
         if (snapshot.hasError) {
           return Center(
             child: Text(
-              'Erreur : Une erreur s\'est produite. Veuillez réessayer.',
-              style: TextStyle(
-                color: Colors.red,
-                fontSize: isSmallScreen ? 14 : 16,
-              ),
+              'Erreur de chargement',
+              style: TextStyle(color: Colors.red, fontSize: isSmallScreen ? 12 : 14),
             ),
           );
         }
@@ -298,7 +284,7 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
         }
 
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return _buildEmptyState("Aucun utilisateur trouvé", context, isDarkMode, isSmallScreen);
+          return _buildEmptyState("Aucun utilisateur", context, isDarkMode, isSmallScreen);
         }
 
         final users = snapshot.data!.docs.where((doc) {
@@ -309,262 +295,106 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
           final dateInscription = (data['dateInscription'] as Timestamp?)?.toDate();
           final derniereConnexion = (data['derniereConnexion'] as Timestamp?)?.toDate();
 
-          if (_selectedFilter != 'Tout' && role != _selectedFilter.toLowerCase()) {
-            return false;
-          }
+          if (_selectedFilter != 'Tout' && role != _selectedFilter.toLowerCase()) return false;
+          if (_searchQuery.isEmpty) return true;
 
-          if (_searchQuery.isEmpty) {
-            return true;
-          }
+          if (nomPrenom.contains(_searchQuery) || email.contains(_searchQuery)) return true;
 
-          if (nomPrenom.contains(_searchQuery) || email.contains(_searchQuery)) {
-            return true;
-          }
-
-          final datePattern = RegExp(r'^\d{2}[/-]\d{2}[/-]\d{4}$');
+          final datePattern = RegExp(r'^\d{2}[/-]\d{2}[/-]\d{4} ');
           if (datePattern.hasMatch(_searchQuery)) {
             final formattedSearchDate = _searchQuery.replaceAll('-', '/');
-            if (dateInscription != null) {
-              final inscriptionDateStr = DateFormat('dd/MM/yyyy').format(dateInscription);
-              if (inscriptionDateStr == formattedSearchDate) {
-                return true;
-              }
+            if (dateInscription != null &&
+                DateFormat('dd/MM/yyyy').format(dateInscription) == formattedSearchDate) {
+              return true;
             }
-            if (derniereConnexion != null) {
-              final connexionDateStr = DateFormat('dd/MM/yyyy').format(derniereConnexion);
-              if (connexionDateStr == formattedSearchDate) {
-                return true;
-              }
+            if (derniereConnexion != null &&
+                DateFormat('dd/MM/yyyy').format(derniereConnexion) == formattedSearchDate) {
+              return true;
             }
           }
-
           return false;
         }).toList();
 
         if (users.isEmpty) {
-          return _buildEmptyState("Aucun utilisateur trouvé pour cette recherche ou filtre", context, isDarkMode, isSmallScreen);
+          return _buildEmptyState("Aucun résultat", context, isDarkMode, isSmallScreen);
         }
 
         return ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(8),
           itemCount: users.length,
           itemBuilder: (context, index) {
-            final userDoc = users[index];
-            return _buildUserCard(userDoc, context, isDarkMode, isSmallScreen);
+            return _buildUserCard(users[index], context, isDarkMode, isSmallScreen);
           },
         );
       },
     );
   }
 
+  // Simplified User Card
   Widget _buildUserCard(QueryDocumentSnapshot doc, BuildContext context, bool isDarkMode, bool isSmallScreen) {
     final data = doc.data() as Map<String, dynamic>;
     final uid = doc.id;
     final currentUserUid = FirebaseAuth.instance.currentUser?.uid;
     final isCurrentUser = uid == currentUserUid;
-
     final nomPrenom = isCurrentUser ? 'Vous' : (data['nomPrenom'] as String? ?? 'Non défini');
     final email = data['email'] as String? ?? 'Non défini';
     final role = data['role'] as String? ?? 'utilisateur';
     final dateInscription = (data['dateInscription'] as Timestamp?)?.toDate();
-    final derniereConnexion = (data['derniereConnexion'] as Timestamp?)?.toDate();
 
-    return MouseRegion(
-      cursor: isCurrentUser ? SystemMouseCursors.basic : SystemMouseCursors.click,
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 12),
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        color: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
-        child: InkWell(
-          onTap: isCurrentUser
-              ? null
-              : () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => EditUserPage(uid: uid),
-              ),
-            );
-          },
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-            child: Stack(
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            nomPrenom.toUpperCase(),
-                            style: TextStyle(
-                              fontSize: isSmallScreen ? 14 : 16,
-                              fontWeight: FontWeight.bold,
-                              color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
-                            ),
-                          ),
-                        ),
-                        if (!isCurrentUser)
-                          Icon(
-                            Icons.edit,
-                            size: isSmallScreen ? 18 : 20,
-                            color: isDarkMode ? AppColors.darkIconColor : AppColors.iconColor,
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Email: $email',
-                      style: TextStyle(
-                        fontSize: isSmallScreen ? 12 : 14,
-                        color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Rôle: ${StringExtension(role).capitalize()}',
-                      style: TextStyle(
-                        fontSize: isSmallScreen ? 12 : 14,
-                        color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    if (dateInscription != null)
-                      Text(
-                        'Inscription: ${dateFormat.format(dateInscription)}',
-                        style: TextStyle(
-                          fontSize: isSmallScreen ? 12 : 14,
-                          color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
-                        ),
-                      ),
-                    const SizedBox(height: 4),
-                    if (derniereConnexion != null)
-                      Text(
-                        'Dernière connexion: ${dateFormat.format(derniereConnexion)}',
-                        style: TextStyle(
-                          fontSize: isSmallScreen ? 12 : 14,
-                          color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
-                        ),
-                      ),
-                  ],
-                ),
-                if (!isCurrentUser)
-                  Positioned(
-                    top: 0,
-                    right: 0,
-                    child: Checkbox(
-                      value: _selectedUids.contains(uid),
-                      onChanged: (value) {
-                        setState(() {
-                          if (value!) {
-                            _selectedUids.add(uid);
-                          } else {
-                            _selectedUids.remove(uid);
-                          }
-                        });
-                      },
-                      activeColor: isDarkMode ? AppColors.darkPrimaryColor : AppColors.primaryColor,
-                      checkColor: AppColors.buttonTextColor,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState(String message, BuildContext context, bool isDarkMode, bool isSmallScreen) {
-    return Center(
-      child: SingleChildScrollView(
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: InkWell(
+        onTap: isCurrentUser
+            ? null
+            : () => Navigator.push(context, MaterialPageRoute(builder: (context) => EditUserPage(uid: uid))),
+        borderRadius: BorderRadius.circular(8),
         child: Padding(
-          padding: EdgeInsets.all(isSmallScreen ? 16 : 24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+          padding: EdgeInsets.all(isSmallScreen ? 8 : 12),
+          child: Stack(
             children: [
-              Icon(
-                Icons.person_off,
-                size: isSmallScreen ? 60 : 80,
-                color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          nomPrenom.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: isSmallScreen ? 12 : 14,
+                            fontWeight: FontWeight.bold,
+                            color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
+                          ),
+                        ),
+                      ),
+                      if (!isCurrentUser)
+                        Icon(Icons.edit, size: isSmallScreen ? 16 : 18, color: isDarkMode ? AppColors.darkIconColor : AppColors.iconColor),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text('Email: $email', style: TextStyle(fontSize: isSmallScreen ? 10 : 12)),
+                  Text('Rôle: ${role.capitalize()}', style: TextStyle(fontSize: isSmallScreen ? 10 : 12)),
+                  if (dateInscription != null)
+                    Text('Inscription: ${dateFormat.format(dateInscription)}', style: TextStyle(fontSize: isSmallScreen ? 10 : 12)),
+                ],
               ),
-              SizedBox(height: isSmallScreen ? 16 : 24),
-              Text(
-                message,
-                style: TextStyle(
-                  fontSize: isSmallScreen ? 14 : 16,
-                  color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
-                  fontWeight: FontWeight.w500,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: isSmallScreen ? 16 : 24),
-              if (_searchQuery.isNotEmpty || _selectedFilter != 'Tout')
-                SizedBox(
-                  width: isSmallScreen ? double.infinity : 200,
-                  child: ElevatedButton(
-                    onPressed: () {
+              if (!isCurrentUser)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: Checkbox(
+                    value: _selectedUids.contains(uid),
+                    onChanged: (value) {
                       setState(() {
-                        _searchController.clear();
-                        _searchQuery = '';
-                        _selectedFilter = 'Tout';
-                        _selectedUids.clear();
+                        if (value!) _selectedUids.add(uid);
+                        else _selectedUids.remove(uid);
                       });
                     },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isDarkMode ? AppColors.darkButtonColor : AppColors.buttonColor,
-                      foregroundColor: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      padding: EdgeInsets.symmetric(
-                        vertical: isSmallScreen ? 12 : 16,
-                        horizontal: isSmallScreen ? 16 : 24,
-                      ),
-                      elevation: 3,
-                    ),
-                    child: Text(
-                      'Réinitialiser la recherche',
-                      style: TextStyle(
-                        fontSize: isSmallScreen ? 14 : 16,
-                        color: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
-                      ),
-                    ),
+                    activeColor: isDarkMode ? AppColors.darkPrimaryColor : AppColors.primaryColor,
                   ),
                 ),
-              SizedBox(height: isSmallScreen ? 8 : 12),
-              SizedBox(
-                width: isSmallScreen ? double.infinity : 200,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pushNamed(context, '/addusersPage');
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isDarkMode ? AppColors.darkButtonColor : AppColors.buttonColor,
-                    foregroundColor: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    padding: EdgeInsets.symmetric(
-                      vertical: isSmallScreen ? 12 : 16,
-                      horizontal: isSmallScreen ? 16 : 24,
-                    ),
-                    elevation: 3,
-                  ),
-                  child: Text(
-                    'Ajouter un utilisateur',
-                    style: TextStyle(
-                      fontSize: isSmallScreen ? 14 : 16,
-                      color: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
-                    ),
-                  ),
-                ),
-              ),
             ],
           ),
         ),
@@ -572,87 +402,186 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
     );
   }
 
+  // Simplified Empty State
+  Widget _buildEmptyState(String message, BuildContext context, bool isDarkMode, bool isSmallScreen) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.person_off, size: isSmallScreen ? 40 : 60, color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            style: TextStyle(
+              fontSize: isSmallScreen ? 12 : 14,
+              color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ElevatedButton(
+            onPressed: () => Navigator.pushNamed(context, '/addusersPage'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isDarkMode ? AppColors.darkButtonColor : AppColors.buttonColor,
+              foregroundColor: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: isSmallScreen ? 8 : 12),
+            ),
+            child: Text('Ajouter un utilisateur', style: TextStyle(fontSize: isSmallScreen ? 12 : 14, color: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Simplified Action Bar
+  Widget _buildActionBar({
+    required bool isDarkMode,
+    required bool isSmallScreen,
+    required VoidCallback? onSelectAll,
+    required VoidCallback? onDeselectAll,
+    required VoidCallback? onDelete,
+    required bool hasSelection,
+    required int selectedCount,
+    required bool isDeleting,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        children: [
+          if (!hasSelection)
+            ElevatedButton(
+              onPressed: onSelectAll,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isDarkMode ? AppColors.darkButtonColor : AppColors.buttonColor,
+                foregroundColor: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: isSmallScreen ? 8 : 10),
+              ),
+              child: Text(
+                'Sélectionner',
+                style: TextStyle(
+                  fontSize: isSmallScreen ? 12 : 14,
+                  color: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
+                ),
+              ),
+            ),
+          if (hasSelection) ...[
+            ElevatedButton(
+              onPressed: onDeselectAll,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isDarkMode ? AppColors.darkButtonColor : AppColors.buttonColor,
+                foregroundColor: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: isSmallScreen ? 8 : 10),
+              ),
+              child: Text(
+                'Tout décocher',
+                style: TextStyle(
+                  fontSize: isSmallScreen ? 12 : 14,
+                  color: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: isDeleting ? null : onDelete,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: isSmallScreen ? 8 : 10),
+              ),
+              child: isDeleting
+                  ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+                  : Text(
+                'Supprimer ($selectedCount)',
+                style: TextStyle(
+                  fontSize: isSmallScreen ? 12 : 14,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Firestore Queries
+  Future<int> _getTotalUsers() async {
+    final snap = await _firestore.firestore.collection('utilisateurs').get();
+    return snap.size;
+  }
+
+  Future<int> _getTotalAdmins() async {
+    final snap = await _firestore.firestore.collection('utilisateurs').where('role', isEqualTo: 'administrateur').get();
+    return snap.size;
+  }
+
+  Future<int> _getTotalTransactions() async {
+    final snap = await _firestore.firestore.collection('transactions').get();
+    return snap.size;
+  }
+
+  Future<double> _getTotalSolde() async {
+    final snap = await _firestore.firestore.collection('comptesMobiles').get();
+    double total = 0;
+    for (var doc in snap.docs) {
+      total += (doc.data()['montantDisponible'] as num?)?.toDouble() ?? 0.0;
+    }
+    return total;
+  }
+
+  // Delete Selected Users
   Future<void> _deleteSelectedUsers() async {
     final currentUserUid = FirebaseAuth.instance.currentUser?.uid;
     final uidsToDelete = _selectedUids.where((uid) => uid != currentUserUid).toList();
 
     if (uidsToDelete.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Expanded(
-                child: Text("Aucun utilisateur sélectionné ou vous ne pouvez pas supprimer votre propre compte."),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
+        const SnackBar(content: Text('Aucun utilisateur sélectionné'), backgroundColor: Colors.red),
       );
       return;
     }
 
-    bool confirm = await showDialog(
+    final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Confirmer la suppression"),
-        content: Text("Voulez-vous vraiment supprimer ${uidsToDelete.length} utilisateur(s) et toutes leurs données associées ?"),
+        title: const Text('Confirmer la suppression'),
+        content: Text('Supprimer ${uidsToDelete.length} utilisateur(s) ?'),
         actions: [
-          TextButton(
-            child: const Text("Annuler"),
-            onPressed: () => Navigator.of(context).pop(false),
-          ),
-          TextButton(
-            child: const Text("Supprimer", style: TextStyle(color: Colors.red)),
-            onPressed: () => Navigator.of(context).pop(true),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Supprimer', style: TextStyle(color: Colors.red))),
         ],
       ),
-    ) ?? false;
+    );
 
-    if (confirm) {
-      setState(() {
-        _isDeleting = true;
-      });
+    if (confirm == true) {
+      setState(() => _isDeleting = true);
       try {
         for (String uid in uidsToDelete) {
           await _deleteUserAndData(uid);
         }
-        await _messagingService.sendLocalNotification(
-          'Utilisateurs supprimés',
-          '${uidsToDelete.length} utilisateur(s) supprimé(s) avec succès.',
-        );
-        setState(() {
-          _selectedUids.clear();
-        });
+        await _messagingService.sendLocalNotification('Succès', '${uidsToDelete.length} utilisateur(s) supprimé(s).');
+        setState(() => _selectedUids.clear());
       } catch (e) {
-        await _messagingService.sendLocalNotification(
-          'Erreur',
-          'Erreur lors de la suppression : $e',
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red));
       } finally {
-        setState(() {
-          _isDeleting = false;
-        });
+        setState(() => _isDeleting = false);
       }
     }
   }
 
+  // Select All Users
   Future<void> _selectAllUsers() async {
     final currentUserUid = FirebaseAuth.instance.currentUser?.uid;
     final snapshot = await _firestore.firestore.collection('utilisateurs').get();
     final allUids = snapshot.docs
-        .where((doc) {
-      final data = doc.data() as Map<String, dynamic>;
-      final role = (data['role'] as String?)?.toLowerCase() ?? '';
-      return _selectedFilter == 'Tout' || role == _selectedFilter.toLowerCase();
-    })
+        .where((doc) => _selectedFilter == 'Tout' || (doc.data() as Map<String, dynamic>)['role']?.toLowerCase() == _selectedFilter.toLowerCase())
         .map((doc) => doc.id)
         .where((uid) => uid != currentUserUid)
         .toList();
@@ -662,109 +591,32 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
     });
   }
 
-  void _deselectAllUsers() {
-    setState(() {
-      _selectedUids.clear();
-    });
-  }
+  // Deselect All Users
+  void _deselectAllUsers() => setState(() => _selectedUids.clear());
 
+  // Delete User and Data
   Future<void> _deleteUserAndData(String uid) async {
-    try {
-      final batch = _firestore.firestore.batch();
-
-      // Suppression du document utilisateur
-      final userRef = _firestore.firestore.collection('utilisateurs').doc(uid);
-      batch.delete(userRef);
-
-      // Suppression du document budget
-      final budgetRef = _firestore.firestore.collection('budgets').doc(uid);
-      batch.delete(budgetRef);
-
-      // Suppression du document statistiques
-      final statsRef = _firestore.firestore.collection('statistiques').doc(uid);
-      batch.delete(statsRef);
-
-      // Suppression des transactions impliquant l'utilisateur
-      final transactionsSnapshot = await _firestore.firestore
-          .collection('transactions')
-          .where('users', arrayContains: uid)
-          .get();
-      for (var doc in transactionsSnapshot.docs) {
-        batch.delete(doc.reference);
-      }
-
-      // Suppression des objectifs d'épargne
-      final objectifsSnapshot = await _firestore.firestore
-          .collection('objectifsEpargne')
-          .where('userId', isEqualTo: uid)
-          .get();
-      for (var doc in objectifsSnapshot.docs) {
-        batch.delete(doc.reference);
-      }
-
-      // Suppression des revenus
-      final revenusSnapshot = await _firestore.firestore
-          .collection('revenus')
-          .where('userId', isEqualTo: uid)
-          .get();
-      for (var doc in revenusSnapshot.docs) {
-        batch.delete(doc.reference);
-      }
-
-      // Suppression des dépenses
-      final depensesSnapshot = await _firestore.firestore
-          .collection('depenses')
-          .where('userId', isEqualTo: uid)
-          .get();
-      for (var doc in depensesSnapshot.docs) {
-        batch.delete(doc.reference);
-      }
-
-      // Suppression des épargnes
-      final epargnesSnapshot = await _firestore.firestore
-          .collection('epargnes')
-          .where('userId', isEqualTo: uid)
-          .get();
-      for (var doc in epargnesSnapshot.docs) {
-        batch.delete(doc.reference);
-      }
-
-      // Suppression de l'historique de connexion
-      final historiqueSnapshot = await _firestore.firestore
-          .collection('historique_connexions')
-          .where('uid', isEqualTo: uid)
-          .get();
-      for (var doc in historiqueSnapshot.docs) {
-        batch.delete(doc.reference);
-      }
-
-      // Suppression du compte mobile
-      final compteMobileRef = _firestore.firestore.collection('comptesMobiles').doc(uid);
-      batch.delete(compteMobileRef);
-
-      // Validation du batch Firestore
-      await batch.commit();
-
-      // Annulation des abonnements actifs
-      _firestore.cancelStatisticsSubscription(uid);
-
-      // Suppression du compte dans Firebase Authentication
-      try {
-        print('Note : La suppression du compte Firebase Authentication nécessite l\'Admin SDK.');
-      } catch (e) {
-        print('Erreur lors de la tentative de suppression du compte Auth: $e');
-        throw Exception('Impossible de supprimer le compte d\'authentification. Utilisez l\'Admin SDK.');
-      }
-    } catch (e) {
-      print('Erreur lors de la suppression des données: $e');
-      rethrow;
-    }
+    final batch = _firestore.firestore.batch();
+    batch.delete(_firestore.firestore.collection('utilisateurs').doc(uid));
+    batch.delete(_firestore.firestore.collection('statistiques').doc(uid));
+    final transactions = await _firestore.firestore.collection('transactions').where('users', arrayContains: uid).get();
+    for (var doc in transactions.docs) batch.delete(doc.reference);
+    final objectifs = await _firestore.firestore.collection('objectifsEpargne').where('userId', isEqualTo: uid).get();
+    for (var doc in objectifs.docs) batch.delete(doc.reference);
+    final revenus = await _firestore.firestore.collection('revenus').where('userId', isEqualTo: uid).get();
+    for (var doc in revenus.docs) batch.delete(doc.reference);
+    final depenses = await _firestore.firestore.collection('depenses').where('userId', isEqualTo: uid).get();
+    for (var doc in depenses.docs) batch.delete(doc.reference);
+    final epargnes = await _firestore.firestore.collection('epargnes').where('userId', isEqualTo: uid).get();
+    for (var doc in epargnes.docs) batch.delete(doc.reference);
+    final historique = await _firestore.firestore.collection('historique_connexions').where('uid', isEqualTo: uid).get();
+    for (var doc in historique.docs) batch.delete(doc.reference);
+    batch.delete(_firestore.firestore.collection('comptesMobiles').doc(uid));
+    await batch.commit();
+    _firestore.cancelStatisticsSubscription(uid);
   }
 }
 
-// Extension pour capitaliser les chaînes
 extension StringExtension on String {
-  String capitalize() {
-    return "${this[0].toUpperCase()}${substring(1).toLowerCase()}";
-  }
+  String capitalize() => "${this[0].toUpperCase()}${substring(1).toLowerCase()}";
 }

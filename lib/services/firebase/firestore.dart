@@ -693,4 +693,46 @@ class FirestoreService {
     }
     _activeSubscriptions.clear();
   }
+
+  // -------------------- BUDGETS UTILISATEUR --------------------
+
+  Future<void> definirBudget({
+    required String userId,
+    required double montant,
+    required String type, // "mensuel", "hebdomadaire", etc.
+    required DateTime periodeDebut,
+    required DateTime periodeFin,
+  }) async {
+    await _firestore.collection('budgets').add({
+      'userId': userId,
+      'montant': montant,
+      'type': type,
+      'periodeDebut': Timestamp.fromDate(periodeDebut),
+      'periodeFin': Timestamp.fromDate(periodeFin),
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<QuerySnapshot> getBudgets(String userId) async {
+    return await _firestore
+        .collection('budgets')
+        .where('userId', isEqualTo: userId)
+        .orderBy('periodeDebut', descending: true)
+        .get();
+  }
+
+  Future<DocumentSnapshot?> getBudgetForPeriod(String userId, DateTime periodeDebut, DateTime periodeFin, {required String type}) async {
+    final query = await _firestore
+        .collection('budgets')
+        .where('userId', isEqualTo: userId)
+        .where('periodeDebut', isEqualTo: Timestamp.fromDate(periodeDebut))
+        .where('periodeFin', isEqualTo: Timestamp.fromDate(periodeFin))
+        .where('type', isEqualTo: type)
+        .limit(1)
+        .get();
+    if (query.docs.isNotEmpty) {
+      return query.docs.first;
+    }
+    return null;
+  }
 }

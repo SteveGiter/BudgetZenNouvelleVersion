@@ -45,7 +45,6 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
     {'value': 'Nourriture', 'label': '🍔 Nourriture'},
     {'value': 'Transport', 'label': '🚗 Transport'},
     {'value': 'Loisirs', 'label': '🎭 Loisirs'},
-    {'value': 'Factures', 'label': '💡 Factures'},
     {'value': 'Autre', 'label': '❓ Autre'},
   ];
 

@@ -5,13 +5,14 @@ import '../../widgets/ForAdmin/admin_bottom_nav_bar.dart';
 import '../../widgets/custom_app_bar.dart';
 import 'package:budget_zen/services/firebase/firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 
 class AddUsersPage extends StatefulWidget {
   const AddUsersPage({super.key});
 
   @override
   State<AddUsersPage> createState() => _AddUsersPageState();
-}
+}   
 
 class _AddUsersPageState extends State<AddUsersPage> {
   final FirestoreService _firestore = FirestoreService();
@@ -27,6 +28,7 @@ class _AddUsersPageState extends State<AddUsersPage> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   String _selectedCountryCode = '+237'; // Code de pays par défaut
+  String? _errorMessage;
 
   final List<String> _roleOptions = ['utilisateur', 'administrateur'];
   final List<String> _providerOptions = ['manual', 'google'];
@@ -38,6 +40,8 @@ class _AddUsersPageState extends State<AddUsersPage> {
     '+241': '🇬🇦 Gabon',
     '+235': '🇹🇩 Tchad',
   };
+
+  final emailRegex = RegExp(r"^[a-zA-Z0-9]+([._%+-][a-zA-Z0-9]+)*@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$");
 
   // Validateur pour le nom et prénom
   String? _nomPrenomValidator(String? value) {
@@ -71,49 +75,10 @@ class _AddUsersPageState extends State<AddUsersPage> {
     if (value == null || value.trim().isEmpty) {
       return 'Veuillez entrer un email';
     }
-
     final trimmedValue = value.trim();
-
-    if (trimmedValue.length < 5) {
-      return 'Email trop court';
-    }
-
-    if (trimmedValue.length > 320) {
-      return 'Email trop long (max 320 caractères)';
-    }
-
-    if (RegExp(r'^[^a-zA-Z0-9]').hasMatch(trimmedValue)) {
-      return 'L\'email ne peut pas commencer par un caractère spécial';
-    }
-
-    final parts = trimmedValue.split('@');
-    if (parts.length != 2) {
-      return 'Format d\'email invalide (manque @ ou trop de @)';
-    }
-
-    final localPart = parts[0];
-    final domainPart = parts[1];
-
-    if (localPart.isEmpty) return 'La partie avant le @ est vide';
-    if (domainPart.isEmpty) return 'La partie après le @ est vide';
-    if (!domainPart.contains('.')) return 'Le domaine doit contenir un point';
-    if (domainPart.startsWith('.') || domainPart.endsWith('.')) {
-      return 'Le domaine ne peut pas commencer ou finir par un point';
-    }
-    if (trimmedValue.contains('..')) {
-      return 'L\'email ne peut pas contenir deux points consécutifs';
-    }
-
-    final tld = domainPart.split('.').last;
-    if (tld.length < 2) {
-      return 'L\'extension de domaine doit faire au moins 2 caractères';
-    }
-
-    final emailRegex = RegExp(r'^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$');
     if (!emailRegex.hasMatch(trimmedValue)) {
       return 'Format d\'email invalide';
     }
-
     return null;
   }
 
@@ -145,7 +110,7 @@ class _AddUsersPageState extends State<AddUsersPage> {
 
     if (!RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(value)) {
       return '1 caractère spécial minimum';
-    }
+    } 
 
     if (value.contains(' ')) {
       return 'Pas d\'espaces autorisés';
@@ -258,6 +223,7 @@ class _AddUsersPageState extends State<AddUsersPage> {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
+        _errorMessage = null;
       });
 
       try {
@@ -423,390 +389,167 @@ class _AddUsersPageState extends State<AddUsersPage> {
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final isSmallScreen = MediaQuery.of(context).size.height < 600;
-
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
     return Scaffold(
       backgroundColor: isDarkMode ? AppColors.darkBackgroundColor : AppColors.backgroundColor,
       appBar: CustomAppBar(
-        title: 'Ajouter des Utilisateurs',
+        title: 'Ajouter un utilisateur',
         showBackArrow: false,
-        showDarkModeButton: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Nouvel Utilisateur',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _nomPrenomController,
-                style: TextStyle(
-                  fontSize: isSmallScreen ? 14 : null,
-                  color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
-                ),
-                decoration: InputDecoration(
-                  isDense: true,
-                  prefixIcon: Icon(
-                    Icons.person,
-                    size: isSmallScreen ? 20 : null,
-                    color: isDarkMode ? AppColors.darkIconColor : AppColors.iconColor,
-                  ),
-                  labelText: 'Nom et Prénom',
-                  labelStyle: TextStyle(
-                    fontSize: isSmallScreen ? 14 : null,
-                    color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(
-                      color: isDarkMode ? AppColors.darkPrimaryColor : AppColors.primaryColor,
-                      width: 2,
-                    ),
-                  ),
-                  filled: true,
-                  fillColor: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
-                  contentPadding: isSmallScreen ? const EdgeInsets.symmetric(vertical: 10, horizontal: 10) : null,
-                ),
-                validator: _nomPrenomValidator,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _emailController,
-                style: TextStyle(
-                  fontSize: isSmallScreen ? 14 : null,
-                  color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
-                ),
-                decoration: InputDecoration(
-                  isDense: true,
-                  prefixIcon: Icon(
-                    Icons.email,
-                    size: isSmallScreen ? 20 : null,
-                    color: isDarkMode ? AppColors.darkIconColor : AppColors.iconColor,
-                  ),
-                  labelText: 'Email',
-                  labelStyle: TextStyle(
-                    fontSize: isSmallScreen ? 14 : null,
-                    color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(
-                      color: isDarkMode ? AppColors.darkPrimaryColor : AppColors.primaryColor,
-                      width: 2,
-                    ),
-                  ),
-                  filled: true,
-                  fillColor: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
-                  contentPadding: isSmallScreen ? const EdgeInsets.symmetric(vertical: 10, horizontal: 10) : null,
-                ),
-                keyboardType: TextInputType.emailAddress,
-                validator: _emailValidator,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _passwordController,
-                obscureText: _obscurePassword,
-                style: TextStyle(
-                  fontSize: isSmallScreen ? 14 : null,
-                  color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
-                ),
-                decoration: InputDecoration(
-                  isDense: true,
-                  prefixIcon: Icon(
-                    Icons.lock,
-                    size: isSmallScreen ? 20 : null,
-                    color: isDarkMode ? AppColors.darkIconColor : AppColors.iconColor,
-                  ),
-                  labelText: 'Mot de passe',
-                  labelStyle: TextStyle(
-                    fontSize: isSmallScreen ? 14 : null,
-                    color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(
-                      color: isDarkMode ? AppColors.darkPrimaryColor : AppColors.primaryColor,
-                      width: 2,
-                    ),
-                  ),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                      size: isSmallScreen ? 20 : null,
-                      color: isDarkMode ? AppColors.darkIconColor : AppColors.iconColor,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        _obscurePassword = !_obscurePassword;
-                      });
-                    },
-                  ),
-                  filled: true,
-                  fillColor: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
-                  contentPadding: isSmallScreen ? const EdgeInsets.symmetric(vertical: 10, horizontal: 10) : null,
-                ),
-                validator: _passwordValidator,
-              ),
-              const SizedBox(height: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Numéro de téléphone (optionnel)',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Row(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.all(isSmallScreen ? 12 : 24),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: 400),
+            child: Card(
+              elevation: 2,
+              color: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: EdgeInsets.all(isSmallScreen ? 16 : 24),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor),
-                          borderRadius: BorderRadius.circular(10),
-                          color: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
+                      Text(
+                        'Créer un nouvel utilisateur',
+                        style: TextStyle(
+                          fontSize: isSmallScreen ? 16 : 20,
+                          fontWeight: FontWeight.bold,
+                          color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        child: DropdownButton<String>(
-                          value: _selectedCountryCode,
-                          underline: const SizedBox(),
-                          items: _countryCodes.entries.map((entry) {
-                            return DropdownMenuItem<String>(
-                              value: entry.key,
-                              child: Text(
-                                '${entry.key} ${entry.value}',
-                                style: TextStyle(
-                                  fontSize: isSmallScreen ? 14 : null,
-                                  color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedCountryCode = value!;
-                            });
-                          },
-                        ),
+                        textAlign: TextAlign.center,
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _numeroTelephoneController,
-                          style: TextStyle(
-                            fontSize: isSmallScreen ? 14 : null,
-                            color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
-                          ),
-                          decoration: InputDecoration(
-                            isDense: true,
-                            prefixIcon: Icon(
-                              Icons.phone,
-                              size: isSmallScreen ? 20 : null,
-                              color: isDarkMode ? AppColors.darkIconColor : AppColors.iconColor,
-                            ),
-                            labelText: 'Numéro',
-                            labelStyle: TextStyle(
-                              fontSize: isSmallScreen ? 14 : null,
-                              color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(
-                                color: isDarkMode ? AppColors.darkPrimaryColor : AppColors.primaryColor,
-                                width: 2,
-                              ),
-                            ),
-                            filled: true,
-                            fillColor: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
-                            contentPadding: isSmallScreen ? const EdgeInsets.symmetric(vertical: 10, horizontal: 10) : null,
-                          ),
-                          keyboardType: TextInputType.phone,
-                          validator: _phoneValidator,
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _nomPrenomController,
+                        decoration: InputDecoration(
+                          labelText: 'Nom & Prénom',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          filled: true,
+                          fillColor: isDarkMode ? AppColors.darkBackgroundColor : AppColors.backgroundColor,
+                          labelStyle: TextStyle(color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor),
                         ),
+                        style: TextStyle(color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor, fontSize: isSmallScreen ? 14 : 16),
+                        validator: _nomPrenomValidator,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _emailController,
+                        decoration: InputDecoration(
+                          labelText: 'Email',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          filled: true,
+                          fillColor: isDarkMode ? AppColors.darkBackgroundColor : AppColors.backgroundColor,
+                          labelStyle: TextStyle(color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor),
+                        ),
+                        style: TextStyle(color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor, fontSize: isSmallScreen ? 14 : 16),
+                        validator: _emailValidator,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _passwordController,
+                        obscureText: true,
+                        decoration: InputDecoration(
+                          labelText: 'Mot de passe',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          filled: true,
+                          fillColor: isDarkMode ? AppColors.darkBackgroundColor : AppColors.backgroundColor,
+                          labelStyle: TextStyle(color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor),
+                        ),
+                        style: TextStyle(color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor, fontSize: isSmallScreen ? 14 : 16),
+                        validator: _passwordValidator,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          SizedBox(
+                            width: 130,
+                            child: DropdownButtonFormField<String>(
+                              value: _selectedCountryCode,
+                              decoration: InputDecoration(
+                                labelText: 'Code pays',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                filled: true,
+                                fillColor: isDarkMode ? AppColors.darkBackgroundColor : AppColors.backgroundColor,
+                                labelStyle: TextStyle(color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor),
+                              ),
+                              items: _countryCodes.entries
+                                  .map((entry) => DropdownMenuItem(
+                                        value: entry.key,
+                                        child: Text(entry.value, overflow: TextOverflow.ellipsis),
+                                      ))
+                                  .toList(),
+                              onChanged: (value) => setState(() => _selectedCountryCode = value ?? '+237'),
+                              style: TextStyle(color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor, fontSize: isSmallScreen ? 14 : 16),
+                              isExpanded: true,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _numeroTelephoneController,
+                              decoration: InputDecoration(
+                                labelText: 'Numéro de téléphone',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                filled: true,
+                                fillColor: isDarkMode ? AppColors.darkBackgroundColor : AppColors.backgroundColor,
+                                labelStyle: TextStyle(color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor),
+                              ),
+                              style: TextStyle(color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor, fontSize: isSmallScreen ? 14 : 16),
+                              validator: _phoneValidator,
+                              keyboardType: TextInputType.phone,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: _role,
+                        items: _roleOptions
+                            .map((role) => DropdownMenuItem(
+                                  value: role,
+                                  child: Text(role[0].toUpperCase() + role.substring(1)),
+                                ))
+                            .toList(),
+                        onChanged: (value) {
+                          setState(() => _role = value ?? 'utilisateur');
+                        },
+                        decoration: InputDecoration(
+                          labelText: 'Rôle',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          filled: true,
+                          fillColor: isDarkMode ? AppColors.darkBackgroundColor : AppColors.backgroundColor,
+                          labelStyle: TextStyle(color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor),
+                        ),
+                        style: TextStyle(color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor, fontSize: isSmallScreen ? 14 : 16),
+                        isExpanded: true,
+                      ),
+                      const SizedBox(height: 20),
+                      if (_errorMessage != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(_errorMessage!, style: TextStyle(color: Colors.red, fontSize: isSmallScreen ? 12 : 14), textAlign: TextAlign.center),
+                        ),
+                      ElevatedButton(
+                        onPressed: _isLoading ? null : _submitForm,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isDarkMode ? AppColors.darkButtonColor : AppColors.buttonColor,
+                          foregroundColor: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: EdgeInsets.symmetric(vertical: isSmallScreen ? 10 : 14),
+                        ),
+                        child: _isLoading
+                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : Text('Ajouter', style: TextStyle(fontSize: isSmallScreen ? 14 : 16, color: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor)),
                       ),
                     ],
                   ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: _role,
-                style: TextStyle(
-                  fontSize: isSmallScreen ? 14 : null,
-                  color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
-                ),
-                decoration: InputDecoration(
-                  isDense: true,
-                  prefixIcon: Icon(
-                    Icons.admin_panel_settings,
-                    size: isSmallScreen ? 20 : null,
-                    color: isDarkMode ? AppColors.darkIconColor : AppColors.iconColor,
-                  ),
-                  labelText: 'Rôle',
-                  labelStyle: TextStyle(
-                    fontSize: isSmallScreen ? 14 : null,
-                    color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(
-                      color: isDarkMode ? AppColors.darkPrimaryColor : AppColors.primaryColor,
-                      width: 2,
-                    ),
-                  ),
-                  filled: true,
-                  fillColor: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
-                  contentPadding: isSmallScreen ? const EdgeInsets.symmetric(vertical: 10, horizontal: 10) : null,
-                ),
-                items: _roleOptions.map((role) {
-                  return DropdownMenuItem(
-                    value: role,
-                    child: Text(role.capitalize()),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() {
-                      _role = value;
-                    });
-                  }
-                },
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Veuillez sélectionner un rôle';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: _provider,
-                style: TextStyle(
-                  fontSize: isSmallScreen ? 14 : null,
-                  color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
-                ),
-                decoration: InputDecoration(
-                  isDense: true,
-                  prefixIcon: Icon(
-                    Icons.security,
-                    size: isSmallScreen ? 20 : null,
-                    color: isDarkMode ? AppColors.darkIconColor : AppColors.iconColor,
-                  ),
-                  labelText: 'Fournisseur',
-                  labelStyle: TextStyle(
-                    fontSize: isSmallScreen ? 14 : null,
-                    color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(
-                      color: isDarkMode ? AppColors.darkPrimaryColor : AppColors.primaryColor,
-                      width: 2,
-                    ),
-                  ),
-                  filled: true,
-                  fillColor: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
-                  contentPadding: isSmallScreen ? const EdgeInsets.symmetric(vertical: 10, horizontal: 10) : null,
-                ),
-                items: _providerOptions.map((provider) {
-                  return DropdownMenuItem(
-                    value: provider,
-                    child: Text(provider.capitalize()),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() {
-                      _provider = value;
-                    });
-                  }
-                },
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Veuillez sélectionner un fournisseur';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 24),
-              Center(
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _submitForm,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isDarkMode ? AppColors.darkButtonColor : AppColors.buttonColor,
-                    foregroundColor: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  child: _isLoading
-                      ? CircularProgressIndicator(color: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor)
-                      : const Text(
-                    'Ajouter l\'utilisateur',
-                    style: TextStyle(fontSize: 16),
-                  ),
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),

@@ -160,7 +160,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                           }
 
                           // 9. Validation format complet avec regex
-                          final emailRegex = RegExp(r'^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$');
+                          final emailRegex = RegExp(r"^[a-zA-Z0-9]+([._%+-][a-zA-Z0-9]+)*@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$");
 
                           if (!emailRegex.hasMatch(trimmedValue)) {
                             return 'Format d\'email invalide';

@@ -4,6 +4,7 @@ import 'package:budget_zen/appPages/Settings.dart';
 import 'package:budget_zen/appPages/SignUp.dart';
 import 'package:budget_zen/appPages/adminPages/AddUser.dart';
 import 'package:budget_zen/services/firebase/TransactionNotificationService.dart';
+import 'package:budget_zen/services/firebase/EventNotificationService.dart';
 import 'package:budget_zen/services/firebase/messaging.dart';
 import 'package:budget_zen/widgets/RechargePage.dart';
 import 'package:budget_zen/widgets/RetraitPage.dart';
@@ -56,23 +57,30 @@ void main() async {
 
   // Initialiser TransactionNotificationService
   final transactionNotificationService = TransactionNotificationService();
+  final eventNotificationService = EventNotificationService();
 
-  // Écouter les changements d'état d'authentification pour initialiser le service de notification
+  // Écouter les changements d'état d'authentification pour initialiser les services de notification
   FirebaseAuth.instance.authStateChanges().listen((User? user) async {
     if (user != null) {
       print('Utilisateur connecté, initialisation du service de notification de transaction');
       await transactionNotificationService.initialize();
+      print('Initialisation du service de notification d\'événements');
+      await eventNotificationService.initialize();
     } else {
       print('Utilisateur déconnecté, arrêt du service de notification de transaction');
       transactionNotificationService.dispose();
+      print('Arrêt du service de notification d\'événements');
+      eventNotificationService.dispose();
     }
   });
 
-  // Écouter aussi les changements de token pour s'assurer que le service est réinitialisé
+  // Écouter aussi les changements de token pour s'assurer que les services sont réinitialisés
   FirebaseAuth.instance.idTokenChanges().listen((User? user) async {
     if (user != null) {
       print('Token utilisateur changé, réinitialisation du service de notification de transaction');
       await transactionNotificationService.initialize();
+      print('Token utilisateur changé, réinitialisation du service de notification d\'événements');
+      await eventNotificationService.initialize();
     }
   });
 

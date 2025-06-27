@@ -145,7 +145,7 @@ class _LoginPageState extends State<LoginPage> {
                                     if (value == null || value.isEmpty) {
                                       return 'Veuillez entrer votre email';
                                     }
-                                    final emailRegex = RegExp(r'^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$');
+                                    final emailRegex = RegExp(r"^[a-zA-Z0-9]+([._%+-][a-zA-Z0-9]+)*@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$");
                                     if (!emailRegex.hasMatch(value.trim())) {
                                       return 'Format d\'email invalide';
                                     }
@@ -405,21 +405,22 @@ class _LoginPageState extends State<LoginPage> {
 
   void _handleFirebaseAuthError(FirebaseAuthException e) {
     String errorMessage;
+    final email = _emailController.text.trim();
     switch (e.code) {
       case 'invalid-email':
-        errorMessage = "L'adresse email n'est pas bien écrite, vérifie-la.";
+        errorMessage = "L'adresse email « $email » n'est pas valide. Exemple attendu : nom.prenom@email.com";
         break;
       case 'user-not-found':
-        errorMessage = "Cet email n'est lié à aucun compte.";
+        errorMessage = "Aucun compte n'est associé à l'email « $email ». Vérifiez l'orthographe ou créez un nouveau compte.";
         break;
       case 'wrong-password':
-        errorMessage = 'Le mot de passe ne va pas, essaie encore.';
+        errorMessage = "Le mot de passe saisi pour l'email « $email » est incorrect. Vérifiez les majuscules/minuscules ou réinitialisez-le si besoin.";
         break;
       case 'network-request-failed':
-        errorMessage = 'Pas de connexion internet, vérifie ton réseau.';
+        errorMessage = "Connexion impossible : aucun accès Internet détecté. Vérifiez votre réseau Wi-Fi ou données mobiles.";
         break;
       default:
-        errorMessage = 'Un souci est arrivé, réessaie plus tard.';
+        errorMessage = "Une erreur inattendue est survenue. Veuillez réessayer dans quelques instants.";
     }
     _showErrorSnackbar('Erreur de connexion', errorMessage);
   }

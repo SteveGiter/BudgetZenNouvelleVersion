@@ -237,13 +237,7 @@ class _AddSavingsDialogState extends State<AddSavingsDialog> {
 
                 Navigator.pop(context);
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Une erreur s\'est produite lors de l\'ajout de l\'épargne. Vérifiez votre connexion ou réessayez.'),
-                    backgroundColor: Colors.red,
-                    duration: const Duration(seconds: 4),
-                  ),
-                ); 
+                _messagingService.sendLocalNotification('Erreur', 'Une erreur s\'est produite lors de l\'ajout de l\'épargne. Vérifiez votre connexion ou réessayez.');
               } finally {
                 setState(() => _isSubmitting = false);
               }
