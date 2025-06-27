@@ -9,6 +9,7 @@ import '../../services/firebase/messaging.dart';
 import '../../utils/logout_utils.dart';
 import '../../widgets/ForAdmin/admin_bottom_nav_bar.dart';
 import '../../widgets/custom_app_bar.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AdminProfilePage extends StatefulWidget {
   const AdminProfilePage({super.key});
@@ -329,7 +330,7 @@ class _AdminProfilePageState extends State<AdminProfilePage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.of(context).pop(),
             child: const Text('Annuler'),
           ),
           ElevatedButton(

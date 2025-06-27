@@ -25,11 +25,11 @@ class EventNotificationService {
     _subscriptions.add(_listenBigTransaction(user.uid, prefs));
     // Rappel d'épargne périodique : à planifier côté UI/app (notification locale planifiée)
     _subscriptions.add(_listenUnusualExpense(user.uid, prefs));
-    _subscriptions.add(_listenIncomeReceived(user.uid, prefs));
     // Résumé périodique : à planifier côté UI/app (notification locale planifiée)
     _subscriptions.add(_listenTransactionRefused(user.uid, prefs));
     _subscriptions.add(_listenSecurityAlert(user.uid, prefs));
     _subscriptions.add(_listenSuddenBalanceChange(user.uid, prefs));
+    _subscriptions.add(_listenBudget75Percent(user.uid, prefs));
   }
 
   // 1. Dépassement de budget
@@ -210,30 +210,6 @@ class EventNotificationService {
     });
   }
 
-  // 7. Revenu reçu
-  StreamSubscription _listenIncomeReceived(String userId, SharedPreferences prefs) {
-    return FirebaseFirestore.instance
-        .collection('revenus')
-        .where('userId', isEqualTo: userId)
-        .orderBy('dateCreation', descending: true)
-        .limit(1)
-        .snapshots()
-        .listen((snapshot) async {
-      for (var doc in snapshot.docs) {
-        final id = doc.id;
-        final montant = (doc['montant'] as num?)?.toDouble() ?? 0.0;
-        final notifiedKey = 'notified_income_$id';
-        if (!(prefs.getBool(notifiedKey) ?? false)) {
-          await _messagingService.sendLocalNotification(
-            'Revenu reçu',
-            'Vous avez reçu un revenu de ${montant.toStringAsFixed(0)} FCFA.',
-          );
-          await prefs.setBool(notifiedKey, true);
-        }
-      }
-    });
-  }
-
   // 8. Résumé périodique : à planifier côté UI/app (notification locale planifiée)
 
   // 10. Transaction refusée
@@ -300,6 +276,97 @@ class EventNotificationService {
         }
       }
       lastSolde = montant;
+    });
+  }
+
+  // Notification si 75% du budget est dépassé (hebdo, mensuel, annuel)
+  StreamSubscription _listenBudget75Percent(String userId, SharedPreferences prefs) {
+    return FirebaseFirestore.instance
+        .collection('depenses')
+        .where('userId', isEqualTo: userId)
+        .orderBy('dateCreation', descending: true)
+        .snapshots()
+        .listen((snapshot) async {
+      if (snapshot.docs.isEmpty) return;
+      final now = DateTime.now();
+      final List<Map<String, dynamic>> budgetsToCheck = [
+        {'type': 'hebdomadaire', 'label': 'hebdomadaire'},
+        {'type': 'mensuel', 'label': 'mensuel'},
+        {'type': 'annuel', 'label': 'annuel'},
+      ];
+      for (final budgetInfo in budgetsToCheck) {
+        final type = budgetInfo['type'];
+        final label = budgetInfo['label'];
+        // Déterminer la période
+        late DateTime periodeDebut;
+        late DateTime periodeFin;
+        if (type == 'mensuel') {
+          periodeDebut = DateTime(now.year, now.month, 1);
+          periodeFin = DateTime(now.year, now.month + 1, 0);
+        } else if (type == 'annuel') {
+          periodeDebut = DateTime(now.year, 1, 1);
+          periodeFin = DateTime(now.year, 12, 31);
+        } else if (type == 'hebdomadaire') {
+          int weekday = now.weekday;
+          DateTime monday = now.subtract(Duration(days: weekday - 1));
+          DateTime sunday = monday.add(Duration(days: 6));
+          periodeDebut = DateTime(monday.year, monday.month, monday.day);
+          periodeFin = DateTime(sunday.year, sunday.month, sunday.day);
+        }
+        // Récupérer le budget courant
+        final budgetQuery = await FirebaseFirestore.instance
+            .collection('budgets')
+            .where('userId', isEqualTo: userId)
+            .where('periodeDebut', isEqualTo: periodeDebut)
+            .where('periodeFin', isEqualTo: periodeFin)
+            .where('type', isEqualTo: type)
+            .limit(1)
+            .get();
+        if (budgetQuery.docs.isEmpty) continue;
+        final budget = budgetQuery.docs.first;
+        final montantBudget = (budget['montant'] as num?)?.toDouble() ?? 0.0;
+        final budgetId = budget.id;
+        // Calculer les dépenses de la période
+        final depenses = snapshot.docs
+            .where((d) {
+              final date = (d['dateCreation'] as Timestamp).toDate();
+              return date.isAfter(periodeDebut.subtract(const Duration(seconds: 1))) &&
+                     date.isBefore(periodeFin.add(const Duration(seconds: 1)));
+            })
+            .map((d) => (d['montant'] as num?)?.toDouble() ?? 0.0)
+            .toList();
+        final total = depenses.fold(0.0, (a, b) => a + b);
+        final percent = montantBudget > 0 ? (total / montantBudget) * 100 : 0.0;
+        final notifiedKey = 'notified_budget75_${budgetId}_$type';
+        if (percent >= 75 && percent < 100 && !(prefs.getBool(notifiedKey) ?? false)) {
+          String periodeLabel = '';
+          String titre = '';
+          if (type == 'mensuel') {
+            final mois = _moisFrancais(periodeDebut.month);
+            periodeLabel = '$mois ${periodeDebut.year}';
+            titre = 'Alerte : 75% de votre budget mensuel utilisé !';
+          } else if (type == 'annuel') {
+            periodeLabel = '${periodeDebut.year}';
+            titre = 'Alerte : 75% de votre budget annuel utilisé !';
+          } else if (type == 'hebdomadaire') {
+            final semaine = _numeroSemaine(periodeDebut);
+            periodeLabel = 'Semaine $semaine';
+            titre = 'Alerte : 75% de votre budget hebdomadaire utilisé !';
+          }
+          final message =
+              'Vous avez déjà utilisé 75% de votre budget $label ($periodeLabel).\n'
+              'Il vous reste seulement 25% pour finir la période.\n'
+              'Dépenses : ${total.toStringAsFixed(0)} FCFA / ${montantBudget.toStringAsFixed(0)} FCFA.\n'
+              'Pensez à ajuster vos dépenses pour éviter de dépasser votre objectif.\n'
+              'Consultez vos statistiques pour mieux piloter votre budget.';
+          await _messagingService.sendLocalNotification(
+            titre,
+            message,
+          );
+          await prefs.setBool(notifiedKey, true);
+        }
+        // On ne notifie qu'une seule fois par période/budget
+      }
     });
   }
 

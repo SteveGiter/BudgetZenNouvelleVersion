@@ -91,63 +91,86 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _checkAndShowSavingsPlanDialog(BuildContext context, double amount, String rechargeTimestamp) async {
+    // Vérifier si la boîte de dialogue a déjà été fermée pour ce timestamp
     final prefs = await SharedPreferences.getInstance();
-    final key = 'savingsPlanDialogClosed_$rechargeTimestamp';
-    final isDialogClosed = prefs.getBool(key) ?? false;
+    final dialogClosedKey = 'savingsPlanDialogClosed_$rechargeTimestamp';
+    if (prefs.getBool(dialogClosedKey) ?? false) {
+      return; // Ne pas afficher si déjà fermé
+    }
 
-    if (!isDialogClosed) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showSavingsPlanDialog(context, amount, rechargeTimestamp);
-      });
-    }  
-  }
+    bool isClosing = false;
 
-  Future<void> _showSavingsPlanDialog(BuildContext context, double amount, String rechargeTimestamp) async {
     await showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Plan de gestion de votre revenu'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Nous vous proposons d\'allouer votre revenu selon la règle 50/30/20 :',
-              style: TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 10),
-            Text('• 50% pour les besoins : ${(amount * 0.50).toStringAsFixed(2)} FCFA'),
-            Text('• 30% pour les désirs : ${(amount * 0.30).toStringAsFixed(2)} FCFA'),
-            Text('• 20% pour l\'épargne : ${(amount * 0.20).toStringAsFixed(2)} FCFA'),
-            const SizedBox(height: 10),
-            const Text(
-              'Vous pouvez ajuster ces montants dans vos objectifs financiers.',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              // Enregistrer que la boîte de dialogue a été fermée pour ce timestamp
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setBool('savingsPlanDialogClosed_$rechargeTimestamp', true);
-              Navigator.of(dialogContext).pop();
-            },
-            child: const Text('Fermer'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(dialogContext).pop();
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SavingsGoalsPage()),
-              );
-            },
-            child: const Text('Définir des objectifs'),
-          ),
-        ],
-      ),
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Plan de gestion de votre revenu'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Nous vous proposons d\'allouer votre revenu selon la règle 50/30/20 :',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(height: 10),
+                  Text('• 50% pour les besoins : ${amount * 0.50} FCFA'),
+                  Text('• 30% pour les désirs : ${amount * 0.30} FCFA'),
+                  Text('• 20% pour l\'épargne : ${amount * 0.20} FCFA'),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Vous pouvez ajuster ces montants dans vos objectifs financiers.',
+                    style: TextStyle(fontSize: 14, color: Colors.grey),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isClosing
+                      ? null
+                      : () async {
+                    setDialogState(() => isClosing = true);
+                    try {
+                      await prefs.setBool(dialogClosedKey, true);
+                      if (dialogContext.mounted) {
+                        Navigator.of(dialogContext).pop();
+                      }
+                    } catch (e) {
+                      // Gérer l'erreur silencieusement ou afficher une notification
+                      _messagingService.sendLocalNotification(
+                        'Erreur',
+                        'Erreur lors de la fermeture : $e',
+                      );
+                      setDialogState(() => isClosing = false);
+                    }
+                  },
+                  child: isClosing
+                      ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                      : const Text('Fermer'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (dialogContext.mounted) {
+                      Navigator.of(dialogContext).pop();
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (context) => const SavingsGoalsPage()),
+                      );
+                    }
+                  },
+                  child: const Text('Définir des objectifs'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -273,7 +296,7 @@ class _HomePageState extends State<HomePage> {
                 size: 50,
               ),
               const SizedBox(width: 10),
-              Text( 
+              Text(
                 'Statistiques',
                 style: TextStyle(
                   fontSize: 20,
@@ -327,19 +350,29 @@ class _HomePageState extends State<HomePage> {
                           Icon(Icons.account_balance_wallet,
                               color: isDarkMode ? AppColors.darkSecondaryColor : Colors.green, size: 16),
                           const SizedBox(width: 6),
+                          Text(
+                            'Budget',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              color: isDarkMode ? AppColors.darkTextColor : Colors.blue.shade900,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
                           Expanded(
                             child: Center(
                               child: DropdownButtonHideUnderline(
                                 child: DropdownButton<String>(
                                   value: _selectedBudgetType,
                                   items: [
-                                    DropdownMenuItem(value: 'hebdomadaire', child: Text('Hebdo.')),
+                                    DropdownMenuItem(value: 'hebdomadaire', child: Text('Hebdomadaire')),
                                     DropdownMenuItem(value: 'mensuel', child: Text('Mensuel')),
                                     DropdownMenuItem(value: 'annuel', child: Text('Annuel')),
                                   ],
                                   onChanged: (value) {
                                     setState(() {
                                       _selectedBudgetType = value ?? 'mensuel';
+                                      _fetchCurrentBudget();
                                     });
                                   },
                                   style: TextStyle(
@@ -592,7 +625,7 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ],
-        ], 
+        ],
       ),
       bottomNavigationBar: CustomBottomNavBar(
         currentIndex: 0,
@@ -601,8 +634,8 @@ class _HomePageState extends State<HomePage> {
             final routes = ['/HomePage', '/HistoriqueTransactionPage', '/historique-epargne-no-back', '/SettingsPage'];
             Navigator.pushReplacementNamed(context, routes[index]);
           }
-        }, 
-      ), 
+        },
+      ),
     );
   }
 

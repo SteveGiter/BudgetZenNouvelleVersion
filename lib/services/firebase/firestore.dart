@@ -703,6 +703,27 @@ class FirestoreService {
     required DateTime periodeDebut,
     required DateTime periodeFin,
   }) async {
+    // Vérifier la dernière modification pour ce type et cette période
+    final existing = await _firestore
+        .collection('budgets')
+        .where('userId', isEqualTo: userId)
+        .where('type', isEqualTo: type)
+        .where('periodeDebut', isEqualTo: Timestamp.fromDate(periodeDebut))
+        .where('periodeFin', isEqualTo: Timestamp.fromDate(periodeFin))
+        .orderBy('createdAt', descending: true)
+        .limit(1)
+        .get();
+    if (existing.docs.isNotEmpty) {
+      final doc = existing.docs.first;
+      final createdAt = (doc['createdAt'] as Timestamp?)?.toDate();
+      if (createdAt != null) {
+        final now = DateTime.now();
+        final diff = now.difference(createdAt).inDays;
+        if (diff < 10) {
+          throw Exception('Vous ne pouvez modifier ce budget que tous les 10 jours. Dernière modification : le ${createdAt.day.toString().padLeft(2, '0')}/${createdAt.month.toString().padLeft(2, '0')}/${createdAt.year}.');
+        }
+      }
+    }
     await _firestore.collection('budgets').add({
       'userId': userId,
       'montant': montant,
@@ -734,5 +755,84 @@ class FirestoreService {
       return query.docs.first;
     }
     return null;
+  }
+
+  Future<Map<String, dynamic>?> checkDepassementBudget({
+    required String userId,
+    required double montantAjoute,
+    String type = 'mensuel',
+  }) async {
+    // Déterminer la période
+    final now = DateTime.now();
+    late DateTime periodeDebut;
+    late DateTime periodeFin;
+    if (type == 'mensuel') {
+      periodeDebut = DateTime(now.year, now.month, 1);
+      periodeFin = DateTime(now.year, now.month + 1, 0);
+    } else if (type == 'annuel') {
+      periodeDebut = DateTime(now.year, 1, 1);
+      periodeFin = DateTime(now.year, 12, 31);
+    } else if (type == 'hebdomadaire') {
+      int weekday = now.weekday;
+      DateTime monday = now.subtract(Duration(days: weekday - 1));
+      DateTime sunday = monday.add(Duration(days: 6));
+      periodeDebut = DateTime(monday.year, monday.month, monday.day);
+      periodeFin = DateTime(sunday.year, sunday.month, sunday.day);
+    } else {
+      // Par défaut, mensuel
+      periodeDebut = DateTime(now.year, now.month, 1);
+      periodeFin = DateTime(now.year, now.month + 1, 0);
+    }
+
+    // Récupérer le budget courant
+    final budgetDoc = await getBudgetForPeriod(userId, periodeDebut, periodeFin, type: type);
+    if (budgetDoc == null || !budgetDoc.exists) return null;
+    final budget = budgetDoc.data() as Map<String, dynamic>;
+    final montantBudget = (budget['montant'] as num?)?.toDouble() ?? 0.0;
+
+    // Récupérer les dépenses de la période
+    final depensesSnap = await _firestore
+        .collection('depenses')
+        .where('userId', isEqualTo: userId)
+        .where('dateCreation', isGreaterThanOrEqualTo: Timestamp.fromDate(periodeDebut))
+        .where('dateCreation', isLessThanOrEqualTo: Timestamp.fromDate(periodeFin))
+        .get();
+    final totalDepenses = depensesSnap.docs.fold<double>(0.0, (sum, doc) {
+      final data = doc.data();
+      return sum + (data['montant'] as num?)!.toDouble();
+    });
+
+    final totalAvecOperation = totalDepenses + montantAjoute;
+    if (totalAvecOperation > montantBudget) {
+      return {
+        'type': type,
+        'montantBudget': montantBudget,
+        'periodeDebut': periodeDebut,
+        'periodeFin': periodeFin,
+        'totalDepenses': totalDepenses,
+        'totalAvecOperation': totalAvecOperation,
+        'depassement': totalAvecOperation - montantBudget,
+      };
+    }
+    return null;
+  }
+
+  // -------------------- HISTORIQUE RECHARGES ET RETRAITS --------------------
+  Stream<QuerySnapshot> streamRecharges(String userId) {
+    return _firestore
+        .collection('revenus')
+        .where('userId', isEqualTo: userId)
+        .where('categorie', isEqualTo: 'Recharge')
+        .orderBy('dateCreation', descending: true)
+        .snapshots();
+  }
+
+  Stream<QuerySnapshot> streamRetraits(String userId) {
+    return _firestore
+        .collection('depenses')
+        .where('userId', isEqualTo: userId)
+        .where('categorie', isEqualTo: 'Retrait')
+        .orderBy('dateCreation', descending: true)
+        .snapshots();
   }
 }

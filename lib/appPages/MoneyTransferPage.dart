@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../colors/app_colors.dart';
 import '../services/firebase/messaging.dart';
 import '../widgets/custom_app_bar.dart';
+import '../services/firebase/firestore.dart';
 
 class MoneyTransferPage extends StatefulWidget {
   const MoneyTransferPage({super.key});
@@ -22,6 +23,7 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
   bool _showCodeField = false;
   bool _isProcessing = false;
   final FirebaseMessagingService _messagingService = FirebaseMessagingService();
+  final FirestoreService _firestoreService = FirestoreService();
 
   static const Color _orangePrimary = Color(0xFFFF7900);
   static const Color _orangeLight = Color(0xFFFF9E40);
@@ -500,6 +502,52 @@ class _MoneyTransferPageState extends State<MoneyTransferPage> {
       if (currentUser == null) {
         throw 'Session expirée, veuillez vous reconnecter';
       }
+
+      // --- Vérification séquentielle des budgets ---
+      String _formatDate(DateTime d) => "${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}";
+      Future<bool> checkBudgetAndAsk(String type, String label) async {
+        final depassement = await _firestoreService.checkDepassementBudget(userId: currentUser.uid, montantAjoute: amount!, type: type);
+        if (depassement != null) {
+          final confirmed = await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: Text('Dépassement du budget $label'),
+              content: Text(
+                'Cette opération va dépasser votre budget $label de la période du '
+                '${_formatDate(depassement['periodeDebut'])} au ${_formatDate(depassement['periodeFin'])}.'
+                '\n\nDépenses après opération : ${depassement['totalAvecOperation'].toStringAsFixed(2)} FCFA\n'
+                'Budget fixé : ${depassement['montantBudget'].toStringAsFixed(2)} FCFA\n'
+                'Dépassement : ${depassement['depassement'].toStringAsFixed(2)} FCFA\n\n'
+                'Risques :\n- Vous risquez de déséquilibrer votre gestion.\n- Essayez de réajuster vos dépenses ou d’augmenter votre budget.\n\n'
+                'Voulez-vous continuer malgré tout ?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Annuler'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Continuer'),
+                ),
+              ],
+            ),
+          );
+          return confirmed == true;
+        }
+        return true;
+      }
+      // 1. Hebdomadaire
+      final okHebdo = await checkBudgetAndAsk('hebdomadaire', 'hebdomadaire');
+      if (!okHebdo) { setState(() => _isProcessing = false); return; }
+      // 2. Mensuel
+      final okMensuel = await checkBudgetAndAsk('mensuel', 'mensuel');
+      if (!okMensuel) { setState(() => _isProcessing = false); return; }
+      // 3. Annuel
+      final okAnnuel = await checkBudgetAndAsk('annuel', 'annuel');
+      if (!okAnnuel) { setState(() => _isProcessing = false); return; }
+      // --- Fin vérification budgets ---
 
       // Vérifier le code
       final isCodeValid = await _simulateCodeVerification(code);

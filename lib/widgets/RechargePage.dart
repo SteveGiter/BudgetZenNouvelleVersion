@@ -7,6 +7,7 @@ import '../../services/firebase/firestore.dart';
 import '../../services/firebase/messaging.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../appPages/SavingsGoalsPage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class RechargePage extends StatefulWidget {
   final double montantDisponible;
@@ -659,18 +660,19 @@ class _RechargePageState extends State<RechargePage> {
           description: 'Recharge via ${_selectedOperator == 'orange' ? 'Orange Money' : 'MTN Mobile Money'}',
         );
 
-        // Envoyer une notification locale
-        final fullPhone = '$_selectedCountryCode ${_phoneController.text.trim()}';
-        final operatorName = _selectedOperator == 'orange' ? 'Orange Money' : 'MTN Mobile Money';
-        final formattedDate = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
-        setState(() => _isSuccessProcessing = true);
-        await _messagingService.sendLocalNotification(
-          'Recharge effectuée avec succès',
-          'Montant: ${amount.toStringAsFixed(2)} FCFA\nOpérateur: $operatorName\nNuméro: $fullPhone\nDate: $formattedDate\nNouveau solde: ${newBalance.toStringAsFixed(2)} FCFA',
-        );
-
         // Naviguer vers HomePage avec le montant et le timestamp
         setState(() => _isSuccessProcessing = false);
+        // --- Notification de recharge, une seule fois ---
+        final prefs = await SharedPreferences.getInstance();
+        final notifKey = 'rechargeNotificationSent_$rechargeTimestamp';
+        final alreadySent = prefs.getBool(notifKey) ?? false;
+        if (!alreadySent) {
+          await _messagingService.sendLocalNotification(
+            'Recharge effectuée avec succès',
+            'Montant: ${amount.toStringAsFixed(2)} FCFA\nVotre solde a été mis à jour.'
+          );
+          await prefs.setBool(notifKey, true);
+        }
         Navigator.pushNamedAndRemoveUntil(
           context,
           '/HomePage',

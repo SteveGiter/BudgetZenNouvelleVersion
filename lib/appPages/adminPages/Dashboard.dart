@@ -58,7 +58,7 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
       body: Column(
         children: [
           // Statistics Section
-          Padding(
+            Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -117,14 +117,14 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
               margin: const EdgeInsets.all(8),
               elevation: 2,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              color: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
-              child: Column(
-                children: [
-                  _buildSearchBar(isDarkMode, isSmallScreen),
-                  _buildFilterButtons(context, isDarkMode, isSmallScreen),
+                color: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
+                child: Column(
+                  children: [
+                    _buildSearchBar(isDarkMode, isSmallScreen),
+                    _buildFilterButtons(context, isDarkMode, isSmallScreen),
                   const Divider(height: 1),
                   Expanded(child: _buildUsersList(context, isDarkMode, isSmallScreen)),
-                ],
+                  ],
               ),
             ),
           ),
@@ -231,26 +231,26 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
+      scrollDirection: Axis.horizontal,
         child: Row(
           children: ['Tout', 'Administrateur', 'Utilisateur'].map((label) {
             return Padding(
               padding: const EdgeInsets.only(right: 4),
-              child: FilterChip(
+      child: FilterChip(
                 label: Text(label, style: TextStyle(fontSize: isSmallScreen ? 10 : 12)),
                 selected: _selectedFilter == label,
-                selectedColor: isDarkMode ? AppColors.darkPrimaryColor : AppColors.primaryColor,
-                backgroundColor: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
-                shape: RoundedRectangleBorder(
+        selectedColor: isDarkMode ? AppColors.darkPrimaryColor : AppColors.primaryColor,
+        backgroundColor: isDarkMode ? AppColors.darkCardColor : AppColors.cardColor,
+        shape: RoundedRectangleBorder(
                   side: BorderSide(color: isDarkMode ? AppColors.darkBorderColor : AppColors.borderColor),
                   borderRadius: BorderRadius.circular(8),
-                ),
-                onSelected: (bool selected) {
-                  setState(() {
-                    _selectedFilter = selected ? label : 'Tout';
-                    _selectedUids.clear();
-                  });
-                },
+        ),
+        onSelected: (bool selected) {
+          setState(() {
+            _selectedFilter = selected ? label : 'Tout';
+            _selectedUids.clear();
+          });
+        },
                 labelStyle: TextStyle(
                   color: _selectedFilter == label
                       ? Colors.white
@@ -305,11 +305,11 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
             final formattedSearchDate = _searchQuery.replaceAll('-', '/');
             if (dateInscription != null &&
                 DateFormat('dd/MM/yyyy').format(dateInscription) == formattedSearchDate) {
-              return true;
+                return true;
             }
             if (derniereConnexion != null &&
                 DateFormat('dd/MM/yyyy').format(derniereConnexion) == formattedSearchDate) {
-              return true;
+                return true;
             }
           }
           return false;
@@ -344,58 +344,58 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      child: InkWell(
-        onTap: isCurrentUser
-            ? null
+        child: InkWell(
+          onTap: isCurrentUser
+              ? null
             : () => Navigator.push(context, MaterialPageRoute(builder: (context) => EditUserPage(uid: uid))),
         borderRadius: BorderRadius.circular(8),
-        child: Padding(
+          child: Padding(
           padding: EdgeInsets.all(isSmallScreen ? 8 : 12),
-          child: Stack(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          nomPrenom.toUpperCase(),
-                          style: TextStyle(
+            child: Stack(
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            nomPrenom.toUpperCase(),
+                            style: TextStyle(
                             fontSize: isSmallScreen ? 12 : 14,
-                            fontWeight: FontWeight.bold,
-                            color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
+                              fontWeight: FontWeight.bold,
+                              color: isDarkMode ? AppColors.darkTextColor : AppColors.textColor,
+                            ),
                           ),
                         ),
-                      ),
-                      if (!isCurrentUser)
+                        if (!isCurrentUser)
                         Icon(Icons.edit, size: isSmallScreen ? 16 : 18, color: isDarkMode ? AppColors.darkIconColor : AppColors.iconColor),
                     ],
                   ),
-                  const SizedBox(height: 4),
+                    const SizedBox(height: 4),
                   Text('Email: $email', style: TextStyle(fontSize: isSmallScreen ? 10 : 12)),
                   Text('Rôle: ${role.capitalize()}', style: TextStyle(fontSize: isSmallScreen ? 10 : 12)),
-                  if (dateInscription != null)
+                    if (dateInscription != null)
                     Text('Inscription: ${dateFormat.format(dateInscription)}', style: TextStyle(fontSize: isSmallScreen ? 10 : 12)),
-                ],
-              ),
-              if (!isCurrentUser)
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: Checkbox(
-                    value: _selectedUids.contains(uid),
-                    onChanged: (value) {
-                      setState(() {
+                  ],
+                ),
+                if (!isCurrentUser)
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: Checkbox(
+                      value: _selectedUids.contains(uid),
+                      onChanged: (value) {
+                        setState(() {
                         if (value!) _selectedUids.add(uid);
                         else _selectedUids.remove(uid);
-                      });
-                    },
-                    activeColor: isDarkMode ? AppColors.darkPrimaryColor : AppColors.primaryColor,
+                        });
+                      },
+                      activeColor: isDarkMode ? AppColors.darkPrimaryColor : AppColors.primaryColor,
                   ),
-                ),
-            ],
+                  ),
+              ],
           ),
         ),
       ),
@@ -405,24 +405,24 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
   // Simplified Empty State
   Widget _buildEmptyState(String message, BuildContext context, bool isDarkMode, bool isSmallScreen) {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
           Icon(Icons.person_off, size: isSmallScreen ? 40 : 60, color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor),
           const SizedBox(height: 8),
-          Text(
-            message,
-            style: TextStyle(
+              Text(
+                message,
+                style: TextStyle(
               fontSize: isSmallScreen ? 12 : 14,
-              color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
+                  color: isDarkMode ? AppColors.darkSecondaryTextColor : AppColors.secondaryTextColor,
             ),
           ),
           const SizedBox(height: 8),
           ElevatedButton(
             onPressed: () => Navigator.pushNamed(context, '/addusersPage'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isDarkMode ? AppColors.darkButtonColor : AppColors.buttonColor,
-              foregroundColor: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isDarkMode ? AppColors.darkButtonColor : AppColors.buttonColor,
+                      foregroundColor: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: isSmallScreen ? 8 : 12),
             ),
@@ -456,32 +456,32 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
                 foregroundColor: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 padding: EdgeInsets.symmetric(horizontal: 12, vertical: isSmallScreen ? 8 : 10),
-              ),
-              child: Text(
+                    ),
+                    child: Text(
                 'Sélectionner',
-                style: TextStyle(
+                      style: TextStyle(
                   fontSize: isSmallScreen ? 12 : 14,
-                  color: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
-                ),
-              ),
-            ),
+                        color: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
+                      ),
+                    ),
+                  ),
           if (hasSelection) ...[
             ElevatedButton(
               onPressed: onDeselectAll,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isDarkMode ? AppColors.darkButtonColor : AppColors.buttonColor,
-                foregroundColor: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isDarkMode ? AppColors.darkButtonColor : AppColors.buttonColor,
+                    foregroundColor: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 padding: EdgeInsets.symmetric(horizontal: 12, vertical: isSmallScreen ? 8 : 10),
-              ),
-              child: Text(
+                  ),
+                  child: Text(
                 'Tout décocher',
-                style: TextStyle(
+                    style: TextStyle(
                   fontSize: isSmallScreen ? 12 : 14,
-                  color: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
+                      color: isDarkMode ? AppColors.darkButtonTextColor : AppColors.buttonTextColor,
+                    ),
+                  ),
                 ),
-              ),
-            ),
             const SizedBox(width: 8),
             ElevatedButton(
               onPressed: isDeleting ? null : onDelete,
@@ -596,7 +596,7 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
 
   // Delete User and Data
   Future<void> _deleteUserAndData(String uid) async {
-    final batch = _firestore.firestore.batch();
+      final batch = _firestore.firestore.batch();
     batch.delete(_firestore.firestore.collection('utilisateurs').doc(uid));
     batch.delete(_firestore.firestore.collection('statistiques').doc(uid));
     final transactions = await _firestore.firestore.collection('transactions').where('users', arrayContains: uid).get();
@@ -612,8 +612,8 @@ class _DashboardAdminPageState extends State<DashboardAdminPage> {
     final historique = await _firestore.firestore.collection('historique_connexions').where('uid', isEqualTo: uid).get();
     for (var doc in historique.docs) batch.delete(doc.reference);
     batch.delete(_firestore.firestore.collection('comptesMobiles').doc(uid));
-    await batch.commit();
-    _firestore.cancelStatisticsSubscription(uid);
+      await batch.commit();
+      _firestore.cancelStatisticsSubscription(uid);
   }
 }
 
