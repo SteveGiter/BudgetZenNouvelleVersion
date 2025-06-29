@@ -790,11 +790,47 @@ class FirestoreService {
       periodeDebut = DateTime(now.year, 1, 1);
       periodeFin = DateTime(now.year, 12, 31);
     } else if (type == 'hebdomadaire') {
-      int weekday = now.weekday;
-      DateTime monday = now.subtract(Duration(days: weekday - 1));
-      DateTime sunday = monday.add(Duration(days: 6));
-      periodeDebut = DateTime(monday.year, monday.month, monday.day);
-      periodeFin = DateTime(sunday.year, sunday.month, sunday.day);
+      // Utiliser la même logique que getCurrentWeekOfMonth
+      DateTime firstDay = DateTime(now.year, now.month, 1);
+      DateTime lastDay = DateTime(now.year, now.month + 1, 0);
+      DateTime currentMonday = firstDay;
+
+      // Aller au premier lundi du mois
+      while (currentMonday.weekday != DateTime.monday) {
+        currentMonday = currentMonday.add(const Duration(days: 1));
+      }
+
+      // Trouver la semaine courante
+      List<Map<String, DateTime>> weeks = [];
+      while (currentMonday.isBefore(lastDay) || currentMonday.isAtSameMomentAs(lastDay)) {
+        DateTime currentSunday = currentMonday.add(const Duration(days: 6));
+        if (currentSunday.isAfter(lastDay)) currentSunday = lastDay;
+        weeks.add({
+          'start': DateTime(currentMonday.year, currentMonday.month, currentMonday.day),
+          'end': DateTime(currentSunday.year, currentSunday.month, currentSunday.day, 23, 59, 59),
+        });
+        currentMonday = currentMonday.add(const Duration(days: 7));
+      }
+
+      // Ajouter la première semaine si le mois ne commence pas un lundi
+      if (firstDay.isBefore(weeks.isNotEmpty ? weeks[0]['start']! : lastDay)) {
+        final previousDay = weeks.isNotEmpty
+            ? weeks[0]['start']!.subtract(const Duration(days: 1))
+            : lastDay;
+        weeks.insert(0, {
+          'start': DateTime(firstDay.year, firstDay.month, firstDay.day),
+          'end': DateTime(previousDay.year, previousDay.month, previousDay.day, 23, 59, 59),
+        });
+      }
+
+      // Trouver la semaine courante
+      int weekIndex = weeks.indexWhere((w) =>
+          now.isAfter(w['start']!.subtract(const Duration(days: 1))) &&
+          now.isBefore(w['end']!.add(const Duration(days: 1))));
+      if (weekIndex == -1) weekIndex = 0;
+
+      periodeDebut = weeks[weekIndex]['start']!;
+      periodeFin = weeks[weekIndex]['end']!;
     } else {
       // Par défaut, mensuel
       periodeDebut = DateTime(now.year, now.month, 1);
@@ -849,11 +885,47 @@ class FirestoreService {
       periodeDebut = DateTime(now.year, 1, 1);
       periodeFin = DateTime(now.year, 12, 31);
     } else if (type == 'hebdomadaire') {
-      int weekday = now.weekday;
-      DateTime monday = now.subtract(Duration(days: weekday - 1));
-      DateTime sunday = monday.add(Duration(days: 6));
-      periodeDebut = DateTime(monday.year, monday.month, monday.day);
-      periodeFin = DateTime(sunday.year, sunday.month, sunday.day);
+      // Utiliser la même logique que getCurrentWeekOfMonth
+      DateTime firstDay = DateTime(now.year, now.month, 1);
+      DateTime lastDay = DateTime(now.year, now.month + 1, 0);
+      DateTime currentMonday = firstDay;
+
+      // Aller au premier lundi du mois
+      while (currentMonday.weekday != DateTime.monday) {
+        currentMonday = currentMonday.add(const Duration(days: 1));
+      }
+
+      // Trouver la semaine courante
+      List<Map<String, DateTime>> weeks = [];
+      while (currentMonday.isBefore(lastDay) || currentMonday.isAtSameMomentAs(lastDay)) {
+        DateTime currentSunday = currentMonday.add(const Duration(days: 6));
+        if (currentSunday.isAfter(lastDay)) currentSunday = lastDay;
+        weeks.add({
+          'start': DateTime(currentMonday.year, currentMonday.month, currentMonday.day),
+          'end': DateTime(currentSunday.year, currentSunday.month, currentSunday.day, 23, 59, 59),
+        });
+        currentMonday = currentMonday.add(const Duration(days: 7));
+      }
+
+      // Ajouter la première semaine si le mois ne commence pas un lundi
+      if (firstDay.isBefore(weeks.isNotEmpty ? weeks[0]['start']! : lastDay)) {
+        final previousDay = weeks.isNotEmpty
+            ? weeks[0]['start']!.subtract(const Duration(days: 1))
+            : lastDay;
+        weeks.insert(0, {
+          'start': DateTime(firstDay.year, firstDay.month, firstDay.day),
+          'end': DateTime(previousDay.year, previousDay.month, previousDay.day, 23, 59, 59),
+        });
+      }
+
+      // Trouver la semaine courante
+      int weekIndex = weeks.indexWhere((w) =>
+          now.isAfter(w['start']!.subtract(const Duration(days: 1))) &&
+          now.isBefore(w['end']!.add(const Duration(days: 1))));
+      if (weekIndex == -1) weekIndex = 0;
+
+      periodeDebut = weeks[weekIndex]['start']!;
+      periodeFin = weeks[weekIndex]['end']!;
     } else {
       // Par défaut, mensuel
       periodeDebut = DateTime(now.year, now.month, 1);

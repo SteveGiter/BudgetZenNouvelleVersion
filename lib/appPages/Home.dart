@@ -1103,6 +1103,88 @@ class _HomePageState extends State<HomePage> {
       );
     }
 
+    if (_selectedBudgetType == 'hebdomadaire') {
+      final now = DateTime.now();
+      final weekInfo = getCurrentWeekOfMonth(now.year, selectedMonth);
+      final week = {
+        'start': weekInfo['start'] as DateTime,
+        'end': weekInfo['end'] as DateTime,
+      };
+
+      return FutureBuilder<List<QueryDocumentSnapshot>>(
+        future: _firestoreService.getBudgetsHebdomadairesForMonth(
+            _currentUser!.uid, now.year, selectedMonth),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: isDarkMode ? AppColors.darkSecondaryColor : Colors.blue.shade800,
+              ),
+            );
+          }
+
+          if (snapshot.hasError) {
+            return Text(
+              'Non défini',
+              style: TextStyle(
+                color: isDarkMode ? AppColors.darkSecondaryTextColor : Colors.grey[600],
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            );
+          }
+
+          final budgets = snapshot.data ?? [];
+          QueryDocumentSnapshot? weekBudget;
+
+          try {
+            weekBudget = budgets.firstWhere(
+              (b) {
+                final periodeDebut = (b['periodeDebut'] as Timestamp).toDate();
+                final periodeFin = (b['periodeFin'] as Timestamp).toDate();
+                final startMatch = periodeDebut.year == week['start']!.year &&
+                    periodeDebut.month == week['start']!.month &&
+                    periodeDebut.day == week['start']!.day;
+                final endMatch = periodeFin.year == week['end']!.year &&
+                    periodeFin.month == week['end']!.month &&
+                    periodeFin.day == week['end']!.day;
+                return startMatch && endMatch;
+              },
+            );
+          } catch (_) {
+            weekBudget = null;
+          }
+
+          if (weekBudget == null) {
+            return Text(
+              'Non défini',
+              style: TextStyle(
+                color: isDarkMode ? AppColors.darkSecondaryTextColor : Colors.grey[600],
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            );
+          }
+
+          final data = weekBudget.data() as Map<String, dynamic>;
+          final montant = (data['montant'] as num?)?.toDouble() ?? 0.0;
+
+          return Text(
+            '${montant.toStringAsFixed(0)} FCFA',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: isDarkMode ? Colors.green[300] : Colors.green[700],
+            ),
+          );
+        },
+      );
+    }
+
+    // Pour les budgets mensuels et annuels, utiliser l'approche directe
     DateTime periodeDebut;
     DateTime periodeFin;
     final now = DateTime.now();
@@ -1113,16 +1195,12 @@ class _HomePageState extends State<HomePage> {
     } else if (_selectedBudgetType == 'annuel') {
       periodeDebut = DateTime(now.year, 1, 1);
       periodeFin = DateTime(now.year, 12, 31);
-    } else if (_selectedBudgetType == 'hebdomadaire') {
-      final weekInfo = getCurrentWeekOfMonth(now.year, selectedMonth);
-      periodeDebut = weekInfo['start'];
-      periodeFin = weekInfo['end'];
     } else {
       periodeDebut = DateTime(now.year, selectedMonth, 1);
       periodeFin = DateTime(now.year, selectedMonth + 1, 0);
     }
 
-    final query = FirebaseFirestore.instance
+     final query = FirebaseFirestore.instance
         .collection('budgets')
         .where('userId', isEqualTo: _currentUser!.uid)
         .where('periodeDebut', isEqualTo: Timestamp.fromDate(periodeDebut))
