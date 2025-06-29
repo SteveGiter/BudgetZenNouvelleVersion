@@ -61,8 +61,7 @@ class _HomePageState extends State<HomePage> {
   double epargnes = 0.0;
   bool isExpanded = false;
   int selectedMonth = DateTime.now().month;
-  String _selectedBudgetType = 'mensuel';
-  double? _currentBudget;
+  int selectedWeekIndex = 0;
 
   StreamSubscription<DocumentSnapshot>? _compteSubscription;
   StreamSubscription<double>? _depensesSubscription;
@@ -71,6 +70,62 @@ class _HomePageState extends State<HomePage> {
   final FirestoreService _firestoreService = FirestoreService();
   final User? _currentUser = FirebaseAuth.instance.currentUser;
   final FirebaseMessagingService _messagingService = FirebaseMessagingService();
+
+  String _selectedBudgetType = 'mensuel';
+  double? _currentBudget;
+
+  Map<String, dynamic> getCurrentWeekOfMonth(int year, int month) {
+    final now = DateTime.now();
+    final isCurrentMonth = year == now.year && month == now.month;
+    final today = isCurrentMonth ? now : DateTime(year, month, 1);
+    DateTime firstDay = DateTime(year, month, 1);
+    DateTime lastDay = DateTime(year, month + 1, 0);
+    List<Map<String, DateTime>> weeks = [];
+    DateTime currentMonday = firstDay;
+
+    // Aller au premier lundi du mois
+    while (currentMonday.weekday != DateTime.monday) {
+      currentMonday = currentMonday.add(const Duration(days: 1));
+    }
+
+    // Générer les semaines
+    while (currentMonday.isBefore(lastDay) || currentMonday.isAtSameMomentAs(lastDay)) {
+      DateTime currentSunday = currentMonday.add(const Duration(days: 6));
+      if (currentSunday.isAfter(lastDay)) currentSunday = lastDay;
+      weeks.add({
+        'start': DateTime(currentMonday.year, currentMonday.month, currentMonday.day),
+        'end': DateTime(currentSunday.year, currentSunday.month, currentSunday.day, 23, 59, 59),
+      });
+      currentMonday = currentMonday.add(const Duration(days: 7));
+    }
+
+// Ajouter la première semaine si le mois ne commence pas un lundi
+    if (firstDay.isBefore(weeks.isNotEmpty ? weeks[0]['start']! : lastDay)) {
+      final previousDay = weeks.isNotEmpty
+          ? weeks[0]['start']!.subtract(const Duration(days: 1))
+          : lastDay;
+      weeks.insert(0, {
+        'start': DateTime(firstDay.year, firstDay.month, firstDay.day),
+        'end': DateTime(previousDay.year, previousDay.month, previousDay.day, 23, 59, 59),
+      });
+    }
+
+    // Trouver la semaine courante
+    int weekIndex = isCurrentMonth
+        ? weeks.indexWhere((w) =>
+    today.isAfter(w['start']!.subtract(const Duration(days: 1))) &&
+        today.isBefore(w['end']!.add(const Duration(days: 1))))
+        : 0; // Par défaut, première semaine pour un mois non courant
+    if (weekIndex == -1) weekIndex = 0;
+
+    print('DEBUG: Semaines calculées: ${weeks.length}, weekIndex=$weekIndex');
+    return {
+      'weekIndex': weekIndex,
+      'start': weeks[weekIndex]['start'],
+      'end': weeks[weekIndex]['end'],
+      'weeks': weeks,
+    };
+  }
 
   @override
   void initState() {
@@ -86,89 +141,111 @@ class _HomePageState extends State<HomePage> {
     if (args is Map && args.containsKey('rechargeAmount') && args.containsKey('rechargeTimestamp')) {
       final double rechargeAmount = args['rechargeAmount'] as double;
       final String rechargeTimestamp = args['rechargeTimestamp'] as String;
-      _checkAndShowSavingsPlanDialog(context, rechargeAmount, rechargeTimestamp);
+      SharedPreferences.getInstance().then((prefs) async {
+        final notifKey = 'rechargeNotifShown_$rechargeTimestamp';
+        final notifShown = prefs.getBool(notifKey) ?? false;
+        if (!notifShown) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          _messagingService.sendLocalNotification(
+              'Recharge effectuée avec succès',
+              'Montant: ${rechargeAmount.toStringAsFixed(2)} FCFA\nVotre solde a été mis à jour.'
+          );
+          await prefs.setBool(notifKey, true);
+        }
+        _checkAndShowSavingsPlanDialog(context, rechargeAmount, rechargeTimestamp);
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && ModalRoute.of(context)?.settings.arguments is Map) {
+          final currentArgs = ModalRoute.of(context)!.settings.arguments as Map;
+          if (currentArgs.containsKey('rechargeAmount') || currentArgs.containsKey('rechargeTimestamp')) {
+            final newArgs = Map<String, dynamic>.from(currentArgs);
+            newArgs.remove('rechargeAmount');
+            newArgs.remove('rechargeTimestamp');
+
+            Navigator.pushReplacement(
+              context,
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) => const HomePage(),
+                settings: RouteSettings(
+                  name: '/HomePage',
+                  arguments: newArgs.isEmpty ? null : newArgs,
+                ),
+                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                  return child;
+                },
+              ),
+            );
+          }
+        }
+      });
     }
   }
 
   Future<void> _checkAndShowSavingsPlanDialog(BuildContext context, double amount, String rechargeTimestamp) async {
-    // Vérifier si la boîte de dialogue a déjà été fermée pour ce timestamp
     final prefs = await SharedPreferences.getInstance();
-    final dialogClosedKey = 'savingsPlanDialogClosed_$rechargeTimestamp';
-    if (prefs.getBool(dialogClosedKey) ?? false) {
-      return; // Ne pas afficher si déjà fermé
+    final key = 'savingsPlanDialogClosed_$rechargeTimestamp';
+    final isDialogClosed = prefs.getBool(key) ?? false;
+
+    if (!isDialogClosed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showSavingsPlanDialog(context, amount, rechargeTimestamp);
+      });
     }
+  }
 
-    bool isClosing = false;
-
+  Future<void> _showSavingsPlanDialog(BuildContext context, double amount, String rechargeTimestamp) async {
     await showDialog(
       context: context,
-      barrierDismissible: false,
       builder: (dialogContext) {
+        bool isClosing = false;
         return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            return AlertDialog(
-              title: const Text('Plan de gestion de votre revenu'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Nous vous proposons d\'allouer votre revenu selon la règle 50/30/20 :',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                  const SizedBox(height: 10),
-                  Text('• 50% pour les besoins : ${amount * 0.50} FCFA'),
-                  Text('• 30% pour les désirs : ${amount * 0.30} FCFA'),
-                  Text('• 20% pour l\'épargne : ${amount * 0.20} FCFA'),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'Vous pouvez ajuster ces montants dans vos objectifs financiers.',
-                    style: TextStyle(fontSize: 14, color: Colors.grey),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isClosing
-                      ? null
-                      : () async {
-                    setDialogState(() => isClosing = true);
-                    try {
-                      await prefs.setBool(dialogClosedKey, true);
-                      if (dialogContext.mounted) {
-                        Navigator.of(dialogContext).pop();
-                      }
-                    } catch (e) {
-                      // Gérer l'erreur silencieusement ou afficher une notification
-                      _messagingService.sendLocalNotification(
-                        'Erreur',
-                        'Erreur lors de la fermeture : $e',
-                      );
-                      setDialogState(() => isClosing = false);
-                    }
-                  },
-                  child: isClosing
-                      ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                      : const Text('Fermer'),
+          builder: (context, setState) => AlertDialog(
+            title: const Text('Plan de gestion de votre revenu'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Nous vous proposons d\'allouer votre revenu selon la règle 50/30/20 :',
+                  style: TextStyle(fontSize: 16),
                 ),
-                ElevatedButton(
-                  onPressed: () {
-                    if (dialogContext.mounted) {
-                      Navigator.of(dialogContext).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (context) => const SavingsGoalsPage()),
-                      );
-                    }
-                  },
-                  child: const Text('Définir des objectifs'),
+                const SizedBox(height: 10),
+                Text('• 50% pour les besoins : ${(amount * 0.50).toStringAsFixed(2)} FCFA'),
+                Text('• 30% pour les désirs : ${(amount * 0.30).toStringAsFixed(2)} FCFA'),
+                Text('• 20% pour l\'épargne : ${(amount * 0.20).toStringAsFixed(2)} FCFA'),
+                const SizedBox(height: 10),
+                const Text(
+                  'Vous pouvez ajuster ces montants dans vos objectifs financiers.',
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
                 ),
               ],
-            );
-          },
+            ),
+            actions: [
+              TextButton(
+                onPressed: isClosing
+                    ? null
+                    : () {
+                  setState(() => isClosing = true);
+                  Navigator.of(dialogContext).pop();
+                  SharedPreferences.getInstance().then((prefs) {
+                    prefs.setBool('savingsPlanDialogClosed_$rechargeTimestamp', true);
+                  });
+                },
+                child: const Text('Fermer'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const SavingsGoalsPage()),
+                  );
+                },
+                child: const Text('Définir des objectifs'),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -241,45 +318,13 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  void _fetchCurrentBudget() async {
-    if (_currentUser == null) return;
-    DateTime now = DateTime.now();
-    DateTime periodeDebut;
-    DateTime periodeFin;
-    if (_selectedBudgetType == 'mensuel') {
-      periodeDebut = DateTime(now.year, now.month, 1);
-      periodeFin = DateTime(now.year, now.month + 1, 0);
-    } else if (_selectedBudgetType == 'annuel') {
-      periodeDebut = DateTime(now.year, 1, 1);
-      periodeFin = DateTime(now.year, 12, 31);
-    } else {
-      // hebdomadaire
-      int weekday = now.weekday;
-      DateTime monday = now.subtract(Duration(days: weekday - 1));
-      DateTime sunday = monday.add(Duration(days: 6));
-      periodeDebut = DateTime(monday.year, monday.month, monday.day);
-      periodeFin = DateTime(sunday.year, sunday.month, sunday.day);
-    }
-    final doc = await _firestoreService.getBudgetForPeriod(
-      _currentUser!.uid,
-      periodeDebut,
-      periodeFin,
-      type: _selectedBudgetType,
-    );
-    if (mounted) {
-      setState(() {
-        _currentBudget = doc != null ? (doc['montant'] as num?)?.toDouble() : null;
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _compteSubscription?.cancel();
-    _depensesSubscription?.cancel();
-    _revenusSubscription?.cancel();
-    _epargnesSubscription?.cancel();
-    super.dispose();
+  String _getMonthName(int month) {
+    if (month < 1 || month > 12) return 'Mois inconnu';
+    const monthNames = [
+      'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
+    ];
+    return monthNames[month - 1];
   }
 
   Widget _buildHeader(bool isDarkMode) {
@@ -313,10 +358,12 @@ class _HomePageState extends State<HomePage> {
                   selectedMonth = value;
                   if (_currentUser != null) {
                     _updateSubscriptions(_currentUser!.uid);
+                    _fetchCurrentBudget();
                   }
                 });
               }
             },
+            isDarkMode: isDarkMode,
           ),
         ],
       ),
@@ -326,6 +373,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final now = DateTime.now();
 
     return Scaffold(
       appBar: CustomAppBar(
@@ -338,65 +386,108 @@ class _HomePageState extends State<HomePage> {
           : Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  child: Card(
-                    elevation: 1,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    color: isDarkMode ? AppColors.darkCardColors[0] : Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isDarkMode ? AppColors.darkCardColors[0] : Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.account_balance_wallet,
-                              color: isDarkMode ? AppColors.darkSecondaryColor : Colors.green, size: 16),
-                          const SizedBox(width: 6),
                           Text(
-                            'Budget',
+                            'Budget:',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
-                              fontSize: 13,
+                              fontSize: 14,
                               color: isDarkMode ? AppColors.darkTextColor : Colors.blue.shade900,
                             ),
                           ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Center(
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<String>(
-                                  value: _selectedBudgetType,
-                                  items: [
-                                    DropdownMenuItem(value: 'hebdomadaire', child: Text('Hebdomadaire')),
-                                    DropdownMenuItem(value: 'mensuel', child: Text('Mensuel')),
-                                    DropdownMenuItem(value: 'annuel', child: Text('Annuel')),
-                                  ],
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _selectedBudgetType = value ?? 'mensuel';
-                                      _fetchCurrentBudget();
-                                    });
-                                  },
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13,
-                                    color: isDarkMode ? AppColors.darkTextColor : Colors.blue.shade900,
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: isDarkMode ? AppColors.darkCardColors[1] : Colors.grey.shade200,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _selectedBudgetType,
+                                items: [
+                                  DropdownMenuItem(
+                                    value: 'hebdomadaire',
+                                    child: Text(
+                                      'Hebdomadaire',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: isDarkMode ? AppColors.darkTextColor : Colors.blue.shade900,
+                                      ),
+                                    ),
                                   ),
-                                  dropdownColor: isDarkMode ? AppColors.darkCardColors[0] : Colors.white,
+                                  DropdownMenuItem(
+                                    value: 'mensuel',
+                                    child: Text(
+                                      'Mensuel',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: isDarkMode ? AppColors.darkTextColor : Colors.blue.shade900,
+                                      ),
+                                    ),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'annuel',
+                                    child: Text(
+                                      'Annuel',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: isDarkMode ? AppColors.darkTextColor : Colors.blue.shade900,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (value) {
+                                  setState(() {
+                                    _selectedBudgetType = value ?? 'mensuel';
+                                    _fetchCurrentBudget();
+                                  });
+                                },
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                  color: isDarkMode ? AppColors.darkTextColor : Colors.blue.shade900,
                                 ),
+                                dropdownColor: isDarkMode ? AppColors.darkCardColors[0] : Colors.white,
+                                icon: Icon(
+                                  Icons.arrow_drop_down,
+                                  color: isDarkMode ? AppColors.darkTextColor : Colors.blue.shade900,
+                                ),
+                                isDense: true,
+                                borderRadius: BorderRadius.circular(12),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 6),
-                          _buildBudgetRealtimeWidget(),
+                          const SizedBox(width: 8),
+                          _buildBudgetRealtimeWidget(isDarkMode),
                         ],
                       ),
                     ),
                   ),
                 ),
+                _buildBudgetInfo(isDarkMode),
                 Expanded(
                   child: ListView(
                     children: [
                       SizedBox(
-                        height: 220,
+                        height: 160,
                         child: ListView.builder(
                           scrollDirection: Axis.horizontal,
                           itemCount: containerTitle.length,
@@ -418,12 +509,18 @@ class _HomePageState extends State<HomePage> {
                             }
 
                             return Padding(
-                              padding: const EdgeInsets.all(20),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 15),
                               child: Card(
-                                elevation: 5.0,
+                                elevation: 4.0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
                                 child: IntrinsicWidth(
                                   child: ConstrainedBox(
-                                    constraints: const BoxConstraints(minWidth: 220, maxWidth: 300),
+                                    constraints: const BoxConstraints(
+                                      minWidth: 180,
+                                      maxWidth: 250,
+                                    ),
                                     child: Container(
                                       decoration: BoxDecoration(
                                         borderRadius: BorderRadius.circular(10),
@@ -432,7 +529,7 @@ class _HomePageState extends State<HomePage> {
                                             : cardBgColor[index],
                                       ),
                                       child: Padding(
-                                        padding: const EdgeInsets.all(16),
+                                        padding: const EdgeInsets.all(12),
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
@@ -440,43 +537,49 @@ class _HomePageState extends State<HomePage> {
                                               children: [
                                                 Icon(
                                                   cardIcons[index],
-                                                  size: 32,
+                                                  size: 28,
                                                   color: isDarkMode
                                                       ? AppColors.darkPrimaryColor
                                                       : AppColors.primaryColor,
                                                 ),
-                                                const SizedBox(width: 10),
-                                                Text(
-                                                  containerTitle[index],
-                                                  style: TextStyle(
-                                                    fontSize: 20,
-                                                    fontFamily: 'LucidaCalligraphy',
-                                                    color: isDarkMode
-                                                        ? AppColors.darkTextColor
-                                                        : AppColors.textColor,
+                                                const SizedBox(width: 8),
+                                                Flexible(
+                                                  child: Text(
+                                                    containerTitle[index],
+                                                    style: TextStyle(
+                                                      fontSize: 18,
+                                                      fontFamily: 'LucidaCalligraphy',
+                                                      color: isDarkMode
+                                                          ? AppColors.darkTextColor
+                                                          : AppColors.textColor,
+                                                    ),
+                                                    overflow: TextOverflow.ellipsis,
                                                   ),
                                                 ),
                                               ],
                                             ),
-                                            space,
+                                            const SizedBox(height: 8),
                                             Text(
                                               'Montant : ${montant.toStringAsFixed(2)} FCFA',
                                               style: TextStyle(
-                                                fontSize: 16,
+                                                fontSize: 14,
                                                 color: isDarkMode
                                                     ? AppColors.darkTextColor
                                                     : AppColors.textColor,
+                                                fontWeight: FontWeight.w600,
                                               ),
                                             ),
-                                            space,
+                                            const SizedBox(height: 8),
                                             Text(
                                               infoMontant[index],
                                               style: TextStyle(
-                                                fontSize: 14,
+                                                fontSize: 12,
                                                 color: isDarkMode
                                                     ? AppColors.darkSecondaryTextColor
                                                     : Colors.grey.shade600,
                                               ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
                                             ),
                                           ],
                                         ),
@@ -796,29 +899,26 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _showBudgetFormDialog(BuildContext context) async {
+  Future<void> _showBudgetFormDialog(BuildContext context, {String? initialType}) async {
     final _formKey = GlobalKey<FormState>();
     final _amountController = TextEditingController();
-    String _selectedType = 'mensuel';
+    String _selectedType = initialType ?? 'mensuel';
     DateTime now = DateTime.now();
-    DateTime periodeDebut = DateTime(now.year, now.month, 1);
-    DateTime periodeFin = DateTime(now.year, now.month + 1, 0);
+    DateTime periodeDebut = DateTime(now.year, selectedMonth, 1);
+    DateTime periodeFin = DateTime(now.year, selectedMonth + 1, 0);
     bool _isSubmitting = false;
 
     void _updatePeriod(String type) {
       if (type == 'mensuel') {
-        periodeDebut = DateTime(now.year, now.month, 1);
-        periodeFin = DateTime(now.year, now.month + 1, 0);
+        periodeDebut = DateTime(now.year, selectedMonth, 1);
+        periodeFin = DateTime(now.year, selectedMonth + 1, 0);
       } else if (type == 'annuel') {
         periodeDebut = DateTime(now.year, 1, 1);
         periodeFin = DateTime(now.year, 12, 31);
       } else if (type == 'hebdomadaire') {
-        // Trouver le lundi de la semaine courante
-        int weekday = now.weekday;
-        DateTime monday = now.subtract(Duration(days: weekday - 1));
-        DateTime sunday = monday.add(Duration(days: 6));
-        periodeDebut = DateTime(monday.year, monday.month, monday.day);
-        periodeFin = DateTime(sunday.year, sunday.month, sunday.day);
+        final weekInfo = getCurrentWeekOfMonth(now.year, selectedMonth);
+        periodeDebut = weekInfo['start'];
+        periodeFin = weekInfo['end'];
       }
     }
     _updatePeriod(_selectedType);
@@ -829,7 +929,7 @@ class _HomePageState extends State<HomePage> {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: Text('Définir mon budget'),
+              title: const Text('Définir mon budget'),
               content: Form(
                 key: _formKey,
                 child: Column(
@@ -838,7 +938,7 @@ class _HomePageState extends State<HomePage> {
                     TextFormField(
                       controller: _amountController,
                       keyboardType: TextInputType.number,
-                      decoration: InputDecoration(labelText: 'Montant du budget'),
+                      decoration: const InputDecoration(labelText: 'Montant du budget'),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Veuillez entrer un montant';
@@ -849,10 +949,10 @@ class _HomePageState extends State<HomePage> {
                         return null;
                       },
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
                       value: _selectedType,
-                      items: [
+                      items: const [
                         DropdownMenuItem(value: 'hebdomadaire', child: Text('Hebdomadaire')),
                         DropdownMenuItem(value: 'mensuel', child: Text('Mensuel')),
                         DropdownMenuItem(value: 'annuel', child: Text('Annuel')),
@@ -863,7 +963,7 @@ class _HomePageState extends State<HomePage> {
                           _updatePeriod(_selectedType);
                         });
                       },
-                      decoration: InputDecoration(labelText: 'Type de budget'),
+                      decoration: const InputDecoration(labelText: 'Type de budget'),
                     ),
                   ],
                 ),
@@ -871,51 +971,114 @@ class _HomePageState extends State<HomePage> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: Text('Annuler'),
+                  child: const Text('Annuler'),
                 ),
                 ElevatedButton(
                   onPressed: _isSubmitting
                       ? null
                       : () async {
-                          if (_formKey.currentState!.validate()) {
-                            setState(() => _isSubmitting = true);
-                            // Vérification de l'existence d'un budget pour la période et le type
-                            final existingBudget = await _firestoreService.getBudgetForPeriod(
-                              _currentUser!.uid,
-                              periodeDebut,
-                              periodeFin,
-                              type: _selectedType,
-                            );
-                            if (existingBudget != null) {
-                              setState(() => _isSubmitting = false);
-                              String errorMsg;
-                              if (_selectedType == 'annuel') {
-                                errorMsg = 'Vous avez déjà défini un budget annuel pour cette année.';
-                              } else if (_selectedType == 'hebdomadaire') {
-                                errorMsg = 'Vous avez déjà défini un budget hebdomadaire pour cette semaine.';
-                              } else {
-                                errorMsg = 'Vous avez déjà défini un budget mensuel pour ce mois.';
-                              }
-                              _messagingService.sendLocalNotification('Erreur', errorMsg);
-                              return;
-                            }
-                            try {
-                              await _firestoreService.definirBudget(
-                                userId: _currentUser!.uid,
-                                montant: double.parse(_amountController.text),
-                                type: _selectedType,
-                                periodeDebut: periodeDebut,
-                                periodeFin: periodeFin,
-                              );
-                              Navigator.of(dialogContext).pop();
-                              _messagingService.sendLocalNotification('Succès', 'Budget enregistré avec succès !');
-                            } catch (e) {
-                              setState(() => _isSubmitting = false);
-                              _messagingService.sendLocalNotification('Erreur', 'Erreur lors de l\'enregistrement du budget.');
-                            }
+                    if (_formKey.currentState!.validate()) {
+                      setState(() => _isSubmitting = true);
+                      final existingBudget = await _firestoreService.getBudgetForPeriod(
+                        _currentUser!.uid,
+                        periodeDebut,
+                        periodeFin,
+                        type: _selectedType,
+                      );
+                      if (existingBudget != null) {
+                        setState(() => _isSubmitting = false);
+
+                        // Vérifier si on peut modifier le budget existant (après 5 jours)
+                        final createdAt = (existingBudget['createdAt'] as Timestamp?)?.toDate();
+                        if (createdAt != null) {
+                          final now = DateTime.now();
+                          final diff = now.difference(createdAt).inDays;
+
+                          if (diff < 5) {
+                            // Délai de modification non respecté
+                            final nextModificationDate = createdAt.add(const Duration(days: 5));
+                            final formattedLastDate = '${createdAt.day.toString().padLeft(2, '0')}/${createdAt.month.toString().padLeft(2, '0')}/${createdAt.year}';
+                            final formattedNextDate = '${nextModificationDate.day.toString().padLeft(2, '0')}/${nextModificationDate.month.toString().padLeft(2, '0')}/${nextModificationDate.year}';
+
+                            final errorMsg = '⏰ Modification du budget temporairement bloquée\n\n'
+                                'Dernière modification : $formattedLastDate\n'
+                                'Prochaine modification possible : $formattedNextDate\n\n'
+                                '💡 Pourquoi cette limitation ?\n'
+                                '• Cela vous aide à maintenir la cohérence de votre budget\n'
+                                '• Évite les modifications trop fréquentes qui peuvent déséquilibrer votre gestion\n'
+                                '• Vous encourage à bien réfléchir avant de définir vos objectifs\n\n'
+                                '🔄 En attendant, vous pouvez :\n'
+                                '• Consulter vos statistiques actuelles\n'
+                                '• Ajuster vos dépenses pour respecter votre budget actuel\n'
+                                '• Planifier vos prochaines modifications';
+
+                            _messagingService.sendLocalNotification('Modification du budget', errorMsg);
+                            return;
                           }
-                        },
-                  child: _isSubmitting ? CircularProgressIndicator() : Text('Enregistrer'),
+                        }
+
+                        // Si on peut modifier, on met à jour le budget existant
+                        try {
+                          await _firestoreService.updateBudget(
+                            budgetId: existingBudget.id,
+                            montant: double.parse(_amountController.text),
+                          );
+                          Navigator.of(dialogContext).pop();
+                          _messagingService.sendLocalNotification('Succès', 'Budget modifié avec succès !');
+                        } catch (e) {
+                          setState(() => _isSubmitting = false);
+                          _messagingService.sendLocalNotification('Erreur', 'Erreur lors de la modification du budget.');
+                        }
+                        return;
+                      }
+
+                      // Si aucun budget existant, on en crée un nouveau
+                      try {
+                        await _firestoreService.definirBudget(
+                          userId: _currentUser!.uid,
+                          montant: double.parse(_amountController.text),
+                          type: _selectedType,
+                          periodeDebut: periodeDebut,
+                          periodeFin: periodeFin,
+                        );
+                        Navigator.of(dialogContext).pop();
+                        _messagingService.sendLocalNotification('Succès', 'Budget enregistré avec succès !');
+                      } catch (e) {   
+                        setState(() => _isSubmitting = false);
+
+                        // Gestion spécifique de l'erreur de délai de modification
+                        String errorMessage;
+                        if (e.toString().contains('Délai de modification non respecté')) {
+                          // Extraire la date de la dernière modification depuis le message d'erreur
+                          final errorText = e.toString();
+                          final dateMatch = RegExp(r'(\d{2}/\d{2}/\d{4})').firstMatch(errorText);
+                          final lastModificationDate = dateMatch?.group(1) ?? 'date inconnue';
+
+                          // Calculer la date de prochaine modification possible
+                          final now = DateTime.now();
+                          final nextModificationDate = now.add(const Duration(days: 5));
+                          final formattedNextDate = '${nextModificationDate.day.toString().padLeft(2, '0')}/${nextModificationDate.month.toString().padLeft(2, '0')}/${nextModificationDate.year}';
+
+                          errorMessage = '⏰ Modification du budget temporairement bloquée\n\n'
+                              'Dernière modification : $lastModificationDate\n'
+                              'Prochaine modification possible : $formattedNextDate\n\n'
+                              '💡 Pourquoi cette limitation ?\n'
+                              '• Cela vous aide à maintenir la cohérence de votre budget\n'
+                              '• Évite les modifications trop fréquentes qui peuvent déséquilibrer votre gestion\n'
+                              '• Vous encourage à bien réfléchir avant de définir vos objectifs\n\n'
+                              '🔄 En attendant, vous pouvez :\n'
+                              '• Consulter vos statistiques actuelles\n'
+                              '• Ajuster vos dépenses pour respecter votre budget actuel\n'
+                              '• Planifier vos prochaines modifications';
+                        } else {
+                          errorMessage = 'Erreur lors de l\'enregistrement du budget. Veuillez réessayer.';
+                        }
+
+                        _messagingService.sendLocalNotification('Modification du budget', errorMessage);
+                      }
+                    }
+                  },
+                  child: _isSubmitting ? const CircularProgressIndicator() : const Text('Enregistrer'),
                 ),
               ],
             );
@@ -925,26 +1088,40 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildBudgetRealtimeWidget() {
+  Widget _buildBudgetRealtimeWidget(bool isDarkMode) {
     if (_currentUser == null) {
-      return Text('-', style: TextStyle(color: Colors.grey[400], fontSize: 12));
+      return Semantics(
+        label: 'Aucun utilisateur connecté',
+        child: Text(
+          '-',
+          style: TextStyle(
+            color: Colors.grey[400],
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
     }
-    DateTime now = DateTime.now();
+
     DateTime periodeDebut;
     DateTime periodeFin;
+    final now = DateTime.now();
+
     if (_selectedBudgetType == 'mensuel') {
-      periodeDebut = DateTime(now.year, now.month, 1);
-      periodeFin = DateTime(now.year, now.month + 1, 0);
+      periodeDebut = DateTime(now.year, selectedMonth, 1);
+      periodeFin = DateTime(now.year, selectedMonth + 1, 0);
     } else if (_selectedBudgetType == 'annuel') {
       periodeDebut = DateTime(now.year, 1, 1);
       periodeFin = DateTime(now.year, 12, 31);
+    } else if (_selectedBudgetType == 'hebdomadaire') {
+      final weekInfo = getCurrentWeekOfMonth(now.year, selectedMonth);
+      periodeDebut = weekInfo['start'];
+      periodeFin = weekInfo['end'];
     } else {
-      int weekday = now.weekday;
-      DateTime monday = now.subtract(Duration(days: weekday - 1));
-      DateTime sunday = monday.add(Duration(days: 6));
-      periodeDebut = DateTime(monday.year, monday.month, monday.day);
-      periodeFin = DateTime(sunday.year, sunday.month, sunday.day);
+      periodeDebut = DateTime(now.year, selectedMonth, 1);
+      periodeFin = DateTime(now.year, selectedMonth + 1, 0);
     }
+
     final query = FirebaseFirestore.instance
         .collection('budgets')
         .where('userId', isEqualTo: _currentUser!.uid)
@@ -953,86 +1130,507 @@ class _HomePageState extends State<HomePage> {
         .where('type', isEqualTo: _selectedBudgetType)
         .limit(1)
         .snapshots();
-    return StreamBuilder<QuerySnapshot>(
-      stream: query,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return SizedBox(width: 60, child: LinearProgressIndicator(minHeight: 2));
-        }
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Text('Aucun', style: TextStyle(color: Colors.grey[400], fontSize: 12));
-        }
-        final doc = snapshot.data!.docs.first;
-        final montant = (doc['montant'] as num?)?.toDouble() ?? 0.0;
-        return Text(
-          '${montant.toStringAsFixed(0)} FCFA',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 13,
-            color: Colors.green[700],
-          ),
-        );
-      },
+
+    return Semantics(
+      label: _selectedBudgetType == 'mensuel'
+          ? 'Budget ${_selectedBudgetType} pour ${_getMonthName(selectedMonth)}'
+          : 'Budget ${_selectedBudgetType} actuel',
+      child: StreamBuilder<QuerySnapshot>(
+        stream: query,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: isDarkMode ? AppColors.darkSecondaryColor : Colors.blue.shade800,
+              ),
+            );
+          }
+
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return Text(
+              'Non défini',
+              style: TextStyle(
+                color: isDarkMode ? AppColors.darkSecondaryTextColor : Colors.grey[600],
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            );
+          }
+
+          final doc = snapshot.data!.docs.first;
+          final montant = (doc['montant'] as num?)?.toDouble() ?? 0.0;
+
+          return Text(
+            '${montant.toStringAsFixed(0)} FCFA',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: isDarkMode ? Colors.green[300] : Colors.green[700],
+            ),
+          );
+        },
+      ),
     );
+  }
+
+  Widget _buildBudgetInfo(bool isDarkMode) {
+    final now = DateTime.now();
+    if (_selectedBudgetType == 'hebdomadaire') {
+      // Define week at the top level to ensure it's accessible
+      final weekInfo = getCurrentWeekOfMonth(now.year, selectedMonth);
+      final week = {
+        'start': weekInfo['start'] as DateTime,
+        'end': weekInfo['end'] as DateTime,
+      };
+      QueryDocumentSnapshot? weekBudget;
+
+      return FutureBuilder<List<QueryDocumentSnapshot>>(
+        future: _firestoreService.getBudgetsHebdomadairesForMonth(
+            _currentUser!.uid, now.year, selectedMonth),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            print('DEBUG: Erreur dans FutureBuilder des budgets: ${snapshot.error}');
+            return const Text('Erreur lors du chargement des budgets');
+          }
+          final budgets = snapshot.data ?? [];
+          print('DEBUG: Budgets récupérés pour le mois: ${budgets.length}');
+          try {
+            weekBudget = budgets.firstWhere(
+                  (b) {
+                final periodeDebut = (b['periodeDebut'] as Timestamp).toDate();
+                final periodeFin = (b['periodeFin'] as Timestamp).toDate();
+                final startMatch = periodeDebut.year == week['start']!.year &&
+                    periodeDebut.month == week['start']!.month &&
+                    periodeDebut.day == week['start']!.day;
+                final endMatch = periodeFin.year == week['end']!.year &&
+                    periodeFin.month == week['end']!.month &&
+                    periodeFin.day == week['end']!.day;
+                print(
+                    'DEBUG: Comparaison budget - periodeDebut=$periodeDebut, periodeFin=$periodeFin, startMatch=$startMatch, endMatch=$endMatch');
+                return startMatch && endMatch;
+              },
+            );
+          } catch (_) {
+            weekBudget = null;
+            print('DEBUG: Aucun budget trouvé pour la semaine courante');
+          }
+          double budgetMontant = 0.0;
+          if (weekBudget != null && weekBudget?.data() != null) {
+            final data = weekBudget!.data() as Map<String, dynamic>;
+            budgetMontant = (data['montant'] as num?)?.toDouble() ?? 0.0;
+            print('DEBUG: Budget trouvé - Montant=$budgetMontant');
+          }
+          final hasBudget = weekBudget != null;
+
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Container(
+              decoration: BoxDecoration(
+                color: isDarkMode ? AppColors.darkCardColors[0] : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Budget hebdomadaire',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: isDarkMode
+                                ? AppColors.darkTextColor
+                                : Colors.blue.shade900,
+                          ),
+                        ),
+                        Text(
+                          'Semaine ${weekInfo['weekIndex'] + 1} : ${week['start']!.day}/${week['start']!.month} - ${week['end']!.day}/${week['end']!.month}',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blueGrey,
+                              fontSize: 12),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('depenses')
+                          .where('userId', isEqualTo: _currentUser!.uid)
+                          .where('dateCreation',
+                          isGreaterThanOrEqualTo:
+                          Timestamp.fromDate(week['start']!))
+                          .where('dateCreation',
+                          isLessThanOrEqualTo: Timestamp.fromDate(DateTime(
+                              week['end']!.year,
+                              week['end']!.month,
+                              week['end']!.day,
+                              23,
+                              59,
+                              59)))
+                          .snapshots(),
+                      builder: (context, depensesSnapshot) {
+                        print(
+                            'DEBUG: Période filtrée - Début=${week['start']} Fin=${DateTime(week['end']!.year, week['end']!.month, week['end']!.day, 23, 59, 59)}');
+                        if (depensesSnapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const LinearProgressIndicator();
+                        }
+                        if (depensesSnapshot.hasError) {
+                          print(
+                              'DEBUG: Erreur dans StreamBuilder des dépenses: ${depensesSnapshot.error}');
+                          return const Text(
+                              'Erreur lors du chargement des dépenses');
+                        }
+                        double totalDepenses = 0.0;
+                        if (depensesSnapshot.hasData) {
+                          totalDepenses = depensesSnapshot.data!.docs
+                              .fold<double>(0.0, (sum, doc) {
+                            final data = doc.data() as Map<String, dynamic>;
+                            print(
+                                'DEBUG: Dépense trouvée - ID=${doc.id}, Montant=${data['montant']}, Date=${(data['dateCreation'] as Timestamp).toDate()}');
+                            return sum + (data['montant'] as num?)!.toDouble();
+                          });
+                        }
+                        print('DEBUG: Total dépenses calculé: $totalDepenses');
+                        final pourcentage = hasBudget && budgetMontant > 0
+                            ? (totalDepenses / budgetMontant * 100)
+                            : 0;
+                        final reste = hasBudget ? (budgetMontant - totalDepenses) : null;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Montant: ${hasBudget ? '${budgetMontant.toStringAsFixed(0)} FCFA' : 'Budget non défini'}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color:
+                                isDarkMode ? AppColors.darkTextColor : Colors.black,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Dépenses: ${totalDepenses.toStringAsFixed(0)} FCFA${hasBudget && budgetMontant > 0 ? ' (${pourcentage.toStringAsFixed(1)}%)' : ''}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color:
+                                isDarkMode ? AppColors.darkTextColor : Colors.black,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            LinearProgressIndicator(
+                              value: hasBudget && budgetMontant > 0
+                                  ? (pourcentage / 100).clamp(0.0, 1.0)
+                                  : 0.0,
+                              backgroundColor:
+                              isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                hasBudget && budgetMontant > 0
+                                    ? (pourcentage > 80
+                                    ? Colors.red
+                                    : (pourcentage > 50 ? Colors.orange : Colors.green))
+                                    : Colors.grey,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              hasBudget
+                                  ? 'Reste: ${reste!.toStringAsFixed(0)} FCFA'
+                                  : 'Reste: Budget non défini',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: !hasBudget
+                                    ? Colors.grey
+                                    : (reste != null && reste < 0
+                                    ? Colors.red
+                                    : (isDarkMode
+                                    ? AppColors.darkTextColor
+                                    : Colors.black)),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    // Handle monthly or annual budget
+    DateTime periodeDebut;
+    DateTime periodeFin;
+    String titre = '';
+    String periodeAffichee = '';
+    if (_selectedBudgetType == 'mensuel') {
+      periodeDebut = DateTime(now.year, selectedMonth, 1);
+      periodeFin = DateTime(now.year, selectedMonth + 1, 0);
+      titre = 'Budget mensuel';
+      periodeAffichee = '${periodeDebut.day}/${periodeDebut.month} - ${periodeFin.day}/${periodeFin.month}';
+    } else if (_selectedBudgetType == 'annuel') {
+      periodeDebut = DateTime(now.year, 1, 1);
+      periodeFin = DateTime(now.year, 12, 31);
+      titre = 'Budget annuel';
+      periodeAffichee = '${now.year}';
+    } else {
+      periodeDebut = DateTime(now.year, selectedMonth, 1);
+      periodeFin = DateTime(now.year, selectedMonth + 1, 0);
+      titre = 'Budget';
+      periodeAffichee = '${periodeDebut.day}/${periodeDebut.month} - ${periodeFin.day}/${periodeFin.month}';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDarkMode ? AppColors.darkCardColors[0] : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    titre,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: isDarkMode ? AppColors.darkTextColor : Colors.blue.shade900,
+                    ),
+                  ),
+                  Text(
+                    periodeAffichee,
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, color: Colors.blueGrey, fontSize: 12),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('budgets')
+                    .where('userId', isEqualTo: _currentUser!.uid)
+                    .where('periodeDebut', isEqualTo: Timestamp.fromDate(periodeDebut))
+                    .where('periodeFin', isEqualTo: Timestamp.fromDate(periodeFin))
+                    .where('type', isEqualTo: _selectedBudgetType)
+                    .limit(1)
+                    .snapshots(),
+                builder: (context, budgetSnapshot) {
+                  if (budgetSnapshot.connectionState == ConnectionState.waiting) {
+                    return const CircularProgressIndicator();
+                  }
+                  final budgetDoc = (budgetSnapshot.hasData && budgetSnapshot.data!.docs.isNotEmpty)
+                      ? budgetSnapshot.data!.docs.first
+                      : null;
+                  final budgetMontant = (budgetDoc != null && budgetDoc['montant'] != null)
+                      ? (budgetDoc['montant'] as num?)?.toDouble() ?? 0.0
+                      : 0.0;
+                  final hasBudget = budgetDoc != null;
+
+                  return StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('depenses')
+                        .where('userId', isEqualTo: _currentUser!.uid)
+                        .where('dateCreation',
+                        isGreaterThanOrEqualTo: Timestamp.fromDate(periodeDebut))
+                        .where('dateCreation',
+                        isLessThanOrEqualTo: Timestamp.fromDate(periodeFin))
+                        .snapshots(),
+                    builder: (context, depensesSnapshot) {
+                      if (depensesSnapshot.connectionState == ConnectionState.waiting) {
+                        return const CircularProgressIndicator();
+                      }
+                      double totalDepenses = 0.0;
+                      if (depensesSnapshot.hasData) {
+                        totalDepenses = depensesSnapshot.data!.docs.fold<double>(
+                            0.0, (sum, doc) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          return sum + (data['montant'] as num?)!.toDouble();
+                        });
+                      }
+                      final pourcentage = hasBudget && budgetMontant > 0
+                          ? (totalDepenses / budgetMontant * 100)
+                          : 0;
+                      final reste = hasBudget ? (budgetMontant - totalDepenses) : null;
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Montant: ${hasBudget ? '${budgetMontant.toStringAsFixed(0)} FCFA' : 'Budget non défini'}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDarkMode ? AppColors.darkTextColor : Colors.black,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Dépenses: ${totalDepenses.toStringAsFixed(0)} FCFA${hasBudget && budgetMontant > 0 ? ' (${pourcentage.toStringAsFixed(1)}%)' : ''}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDarkMode ? AppColors.darkTextColor : Colors.black,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          LinearProgressIndicator(
+                            value: hasBudget && budgetMontant > 0
+                                ? (pourcentage / 100).clamp(0.0, 1.0)
+                                : 0.0,
+                            backgroundColor:
+                            isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              hasBudget && budgetMontant > 0
+                                  ? (pourcentage > 80
+                                  ? Colors.red
+                                  : (pourcentage > 50 ? Colors.orange : Colors.green))
+                                  : Colors.grey,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            hasBudget
+                                ? 'Reste: ${reste!.toStringAsFixed(0)} FCFA'
+                                : 'Reste: Budget non défini',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: !hasBudget
+                                  ? Colors.grey
+                                  : (reste != null && reste < 0
+                                  ? Colors.red
+                                  : (isDarkMode
+                                  ? AppColors.darkTextColor
+                                  : Colors.black)),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _fetchCurrentBudget() async {
+    if (_currentUser == null) return;
+    DateTime periodeDebut;
+    DateTime periodeFin;
+    final now = DateTime.now();
+    if (_selectedBudgetType == 'mensuel') {
+      periodeDebut = DateTime(now.year, selectedMonth, 1);
+      periodeFin = DateTime(now.year, selectedMonth + 1, 0);
+    } else if (_selectedBudgetType == 'annuel') {
+      periodeDebut = DateTime(now.year, 1, 1);
+      periodeFin = DateTime(now.year, 12, 31);
+    } else if (_selectedBudgetType == 'hebdomadaire') {
+      final weekInfo = getCurrentWeekOfMonth(now.year, selectedMonth);
+      periodeDebut = weekInfo['start'];
+      periodeFin = weekInfo['end'];
+    } else {
+      periodeDebut = DateTime(now.year, selectedMonth, 1);
+      periodeFin = DateTime(now.year, selectedMonth + 1, 0);
+    }
+    final doc = await _firestoreService.getBudgetForPeriod(
+      _currentUser!.uid,
+      periodeDebut,
+      periodeFin,
+      type: _selectedBudgetType,
+    );
+    if (mounted) {
+      setState(() {
+        _currentBudget = doc != null ? (doc['montant'] as num?)?.toDouble() : null;
+      });
+    }
   }
 }
 
 class _MonthDropdown extends StatelessWidget {
   final int selectedMonth;
   final ValueChanged<int?> onChanged;
+  final bool isDarkMode;
 
   const _MonthDropdown({
     required this.selectedMonth,
     required this.onChanged,
+    required this.isDarkMode,
   });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: colors.surfaceVariant,
+        color: isDarkMode ? AppColors.darkCardColors[1] : Colors.grey.shade200,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: DropdownButton<int>(
-        value: selectedMonth,
-        underline: const SizedBox(),
-        icon: Icon(Icons.arrow_drop_down, color: colors.onSurface),
-        style: theme.textTheme.bodyMedium?.copyWith(color: colors.onSurface),
-        dropdownColor: colors.surfaceVariant,
-        borderRadius: BorderRadius.circular(12),
-        items: List.generate(12, (index) => index + 1).map((month) {
-          return DropdownMenuItem<int>(
-            value: month,
-            child: Text(
-              _getMonthName(month),
-              style: theme.textTheme.bodyMedium,
-            ),
-          );
-        }).toList(),
-        onChanged: onChanged,
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int>(
+          value: selectedMonth,
+          items: List.generate(12, (index) => index + 1).map((month) {
+            return DropdownMenuItem<int>(
+              value: month,
+              child: Text(
+                context.findAncestorStateOfType<_HomePageState>()?._getMonthName(month) ?? 'Mois inconnu',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDarkMode ? AppColors.darkTextColor : Colors.blue.shade900,
+                ),
+              ),
+            );
+          }).toList(),
+          onChanged: onChanged,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: isDarkMode ? AppColors.darkTextColor : Colors.blue.shade900,
+          ),
+          dropdownColor: isDarkMode ? AppColors.darkCardColors[0] : Colors.white,
+          icon: Icon(
+            Icons.arrow_drop_down,
+            color: isDarkMode ? AppColors.darkTextColor : Colors.blue.shade900,
+          ),
+          isDense: true,
+          borderRadius: BorderRadius.circular(12),
+        ),
       ),
     );
-  }
-
-  String _getMonthName(int month) {
-    const monthNames = [
-      'Janvier',
-      'Février',
-      'Mars',
-      'Avril',
-      'Mai',
-      'Juin',
-      'Juillet',
-      'Août',
-      'Septembre',
-      'Octobre',
-      'Novembre',
-      'Décembre'
-    ];
-    return monthNames[month - 1];
   }
 }

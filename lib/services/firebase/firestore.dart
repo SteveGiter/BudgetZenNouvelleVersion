@@ -699,17 +699,21 @@ class FirestoreService {
   Future<void> definirBudget({
     required String userId,
     required double montant,
-    required String type, // "mensuel", "hebdomadaire", etc.
+    required String type,
     required DateTime periodeDebut,
     required DateTime periodeFin,
   }) async {
+    // Normaliser les dates pour supprimer les composantes horaires
+    final normalizedDebut = DateTime(periodeDebut.year, periodeDebut.month, periodeDebut.day);
+    final normalizedFin = DateTime(periodeFin.year, periodeFin.month, periodeFin.day, 23, 59, 59);
+
     // Vérifier la dernière modification pour ce type et cette période
     final existing = await _firestore
         .collection('budgets')
         .where('userId', isEqualTo: userId)
         .where('type', isEqualTo: type)
-        .where('periodeDebut', isEqualTo: Timestamp.fromDate(periodeDebut))
-        .where('periodeFin', isEqualTo: Timestamp.fromDate(periodeFin))
+        .where('periodeDebut', isEqualTo: Timestamp.fromDate(normalizedDebut))
+        .where('periodeFin', isEqualTo: Timestamp.fromDate(normalizedFin))
         .orderBy('createdAt', descending: true)
         .limit(1)
         .get();
@@ -719,8 +723,11 @@ class FirestoreService {
       if (createdAt != null) {
         final now = DateTime.now();
         final diff = now.difference(createdAt).inDays;
-        if (diff < 10) {
-          throw Exception('Vous ne pouvez modifier ce budget que tous les 10 jours. Dernière modification : le ${createdAt.day.toString().padLeft(2, '0')}/${createdAt.month.toString().padLeft(2, '0')}/${createdAt.year}.');
+        if (diff < 5) {
+          final nextModificationDate = createdAt.add(const Duration(days: 5));
+          final formattedLastDate = '${createdAt.day.toString().padLeft(2, '0')}/${createdAt.month.toString().padLeft(2, '0')}/${createdAt.year}';
+          final formattedNextDate = '${nextModificationDate.day.toString().padLeft(2, '0')}/${nextModificationDate.month.toString().padLeft(2, '0')}/${nextModificationDate.year}';
+          throw Exception('Délai de modification non respecté. Dernière modification : $formattedLastDate. Prochaine modification possible : $formattedNextDate. Vous devez attendre 5 jours entre chaque modification de budget.');
         }
       }
     }
@@ -728,8 +735,18 @@ class FirestoreService {
       'userId': userId,
       'montant': montant,
       'type': type,
-      'periodeDebut': Timestamp.fromDate(periodeDebut),
-      'periodeFin': Timestamp.fromDate(periodeFin),
+      'periodeDebut': Timestamp.fromDate(normalizedDebut),
+      'periodeFin': Timestamp.fromDate(normalizedFin),
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> updateBudget({
+    required String budgetId,
+    required double montant,
+  }) async {
+    await _firestore.collection('budgets').doc(budgetId).update({
+      'montant': montant,
       'createdAt': FieldValue.serverTimestamp(),
     });
   }
@@ -817,6 +834,53 @@ class FirestoreService {
     return null;
   }
 
+  Future<bool> isBudgetAlreadyExceeded({
+    required String userId,
+    String type = 'mensuel',
+  }) async {
+    // Déterminer la période
+    final now = DateTime.now();
+    late DateTime periodeDebut;
+    late DateTime periodeFin;
+    if (type == 'mensuel') {
+      periodeDebut = DateTime(now.year, now.month, 1);
+      periodeFin = DateTime(now.year, now.month + 1, 0);
+    } else if (type == 'annuel') {
+      periodeDebut = DateTime(now.year, 1, 1);
+      periodeFin = DateTime(now.year, 12, 31);
+    } else if (type == 'hebdomadaire') {
+      int weekday = now.weekday;
+      DateTime monday = now.subtract(Duration(days: weekday - 1));
+      DateTime sunday = monday.add(Duration(days: 6));
+      periodeDebut = DateTime(monday.year, monday.month, monday.day);
+      periodeFin = DateTime(sunday.year, sunday.month, sunday.day);
+    } else {
+      // Par défaut, mensuel
+      periodeDebut = DateTime(now.year, now.month, 1);
+      periodeFin = DateTime(now.year, now.month + 1, 0);
+    }
+
+    // Récupérer le budget courant
+    final budgetDoc = await getBudgetForPeriod(userId, periodeDebut, periodeFin, type: type);
+    if (budgetDoc == null || !budgetDoc.exists) return false;
+    final budget = budgetDoc.data() as Map<String, dynamic>;
+    final montantBudget = (budget['montant'] as num?)?.toDouble() ?? 0.0;
+
+    // Récupérer les dépenses de la période
+    final depensesSnap = await _firestore
+        .collection('depenses')
+        .where('userId', isEqualTo: userId)
+        .where('dateCreation', isGreaterThanOrEqualTo: Timestamp.fromDate(periodeDebut))
+        .where('dateCreation', isLessThanOrEqualTo: Timestamp.fromDate(periodeFin))
+        .get();
+    final totalDepenses = depensesSnap.docs.fold<double>(0.0, (sum, doc) {
+      final data = doc.data();
+      return sum + (data['montant'] as num?)!.toDouble();
+    });
+
+    return totalDepenses > montantBudget;
+  }
+
   // -------------------- HISTORIQUE RECHARGES ET RETRAITS --------------------
   Stream<QuerySnapshot> streamRecharges(String userId) {
     return _firestore
@@ -834,5 +898,20 @@ class FirestoreService {
         .where('categorie', isEqualTo: 'Retrait')
         .orderBy('dateCreation', descending: true)
         .snapshots();
+  }
+
+  Future<List<QueryDocumentSnapshot>> getBudgetsHebdomadairesForMonth(String userId, int year, int month) async {
+    final firstDay = DateTime(year, month, 1);
+    final lastDay = DateTime(year, month + 1, 0);
+
+    final query = await _firestore
+        .collection('budgets')
+        .where('userId', isEqualTo: userId)
+        .where('type', isEqualTo: 'hebdomadaire')
+        .where('periodeDebut', isGreaterThanOrEqualTo: Timestamp.fromDate(firstDay))
+        .where('periodeDebut', isLessThanOrEqualTo: Timestamp.fromDate(lastDay))
+        .get();
+
+    return query.docs;
   }
 }

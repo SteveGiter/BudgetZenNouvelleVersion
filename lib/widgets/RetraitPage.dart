@@ -618,6 +618,18 @@ class _RetraitPageState extends State<RetraitPage> {
         // --- Vérification séquentielle des budgets ---
         String _formatDate(DateTime d) => "${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}";
         Future<bool> checkBudgetAndAsk(String type, String label) async {
+          // Vérifier d'abord si le budget est déjà dépassé
+          final isAlreadyExceeded = await _firestoreService.isBudgetAlreadyExceeded(
+            userId: _currentUser!.uid,
+            type: type,
+          );
+          
+          // Si le budget est déjà dépassé, passer directement à la vérification suivante
+          if (isAlreadyExceeded) {
+            return true;
+          }
+          
+          // Sinon, vérifier si cette opération va dépasser le budget
           final depassement = await _firestoreService.checkDepassementBudget(userId: _currentUser!.uid, montantAjoute: amount, type: type);
           if (depassement != null) {
             final confirmed = await showDialog<bool>(
