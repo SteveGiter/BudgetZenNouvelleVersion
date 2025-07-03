@@ -1182,7 +1182,7 @@ class _HomePageState extends State<HomePage> {
           );
         },
       );
-    }
+    } 
 
     // Pour les budgets mensuels et annuels, utiliser l'approche directe
     DateTime periodeDebut;
@@ -1203,9 +1203,9 @@ class _HomePageState extends State<HomePage> {
      final query = FirebaseFirestore.instance
         .collection('budgets')
         .where('userId', isEqualTo: _currentUser!.uid)
-        .where('periodeDebut', isEqualTo: Timestamp.fromDate(periodeDebut))
-        .where('periodeFin', isEqualTo: Timestamp.fromDate(periodeFin))
         .where('type', isEqualTo: _selectedBudgetType)
+        .where('periodeDebut', isLessThanOrEqualTo: periodeDebut)
+        .where('periodeFin', isGreaterThanOrEqualTo: periodeFin)
         .limit(1)
         .snapshots();
 
@@ -1521,9 +1521,9 @@ class _HomePageState extends State<HomePage> {
                 stream: FirebaseFirestore.instance
                     .collection('budgets')
                     .where('userId', isEqualTo: _currentUser!.uid)
-                    .where('periodeDebut', isEqualTo: Timestamp.fromDate(periodeDebut))
-                    .where('periodeFin', isEqualTo: Timestamp.fromDate(periodeFin))
                     .where('type', isEqualTo: _selectedBudgetType)
+                    .where('periodeDebut', isLessThanOrEqualTo: periodeDebut)
+                    .where('periodeFin', isGreaterThanOrEqualTo: periodeFin)
                     .limit(1)
                     .snapshots(),
                 builder: (context, budgetSnapshot) {
